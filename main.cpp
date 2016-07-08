@@ -522,4 +522,3 @@ SDL_Texture *LoadTexture(const string &filename) {
     SDL_FreeSurface(surface);
     return texture;
 }
-
