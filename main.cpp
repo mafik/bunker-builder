@@ -10,12 +10,11 @@
 #include <set>
 #include <functional>
 #include "namegen.h"
+#include "utils.h"
 
 using namespace std;
 using namespace bb;
 
-typedef uint64_t u64;
-typedef int64_t i64;
 typedef pair < i64, i64 > Cell;
 typedef pair < i64, i64 > Point;
 
@@ -60,18 +59,6 @@ enum Command {
 
 Command active_command = COMMAND_SELECT;
 
-template < class T > T div_floor(T x, T y) {
-  T q = x / y;
-  T r = x % y;
-  if ((r != 0) && ((r < 0) != (y < 0)))
-    --q;
-  return q;
-}
-
-template < class T > T clamp(T value, T min, T max) {
-  return value < min ? min : value > max ? max : value;
-}
-
 Cell cellFromPoint(Point point) {
   return Cell(div_floor(point.first, H), div_floor(point.second, W));
 }
@@ -114,35 +101,6 @@ bool can_travel(Cell cell) {
   if (it == cells.end())
     return false;
   return true;
-}
-
-template < class T > T limit_abs(T value, T limit) {
-  if (value < -limit)
-    return -limit;
-  if (value > limit)
-    return limit;
-  return value;
-}
-
-string format(string fmt, ...) {
-  int size = ((int) fmt.size()) * 2 + 50;       // Use a rubric appropriate for
-  // your code
-  std::string str;
-  va_list ap;
-  while (1) {                   // Maximum two passes on a POSIX system...
-    str.resize(size);
-    va_start(ap, fmt);
-    int n = vsnprintf((char *) str.data(), size, fmt.c_str(), ap);
-    va_end(ap);
-    if (n > -1 && n < size) {   // Everything worked
-      str.resize(n);
-      return str;
-    }
-    if (n > -1)                 // Needed size returned
-      size = n + 1;             // For null char
-    else
-      size *= 2;                // Guess at a larger size (OS specific)
-  }
 }
 
 struct Dwarf {
