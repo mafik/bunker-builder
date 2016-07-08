@@ -5,12 +5,12 @@
 #include <map>
 #include <deque>
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_image.h>
 #include <set>
 #include <functional>
 #include "namegen.h"
 #include "utils.h"
 #include "game_base.h"
+#include "sdl_base.h"
 
 using namespace std;
 using namespace bb;
@@ -24,8 +24,6 @@ SDL_Texture *selection_texture;
 map < StructureType, SDL_Texture * >textures;
 SDL_Texture *sky;
 SDL_Texture *dwarf;
-SDL_Window *window;
-SDL_Renderer *renderer;
 SDL_Rect windowRect = { 900, 300, 800, 1000 };
 
 struct Button {
@@ -135,8 +133,6 @@ struct Dwarf {
 };
 
 bool Init();
-
-SDL_Texture *LoadTexture(const string & filename);
 
 void Draw();
 
@@ -422,20 +418,4 @@ for (auto p:initializer_list < pair < string, Command >> {
     buttons.push_back(b);
   }
   return true;
-}
-
-SDL_Texture *LoadTexture(const string & filename) {
-  SDL_Surface *surface = IMG_Load(filename.c_str());
-  if (surface == nullptr) {
-    fprintf(stderr, "Failure while loading texture surface : %s\n",
-            SDL_GetError());
-    return nullptr;
-  }
-  SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
-  if (texture == nullptr) {
-    fprintf(stderr, "Failure while loading texture : %s\n", SDL_GetError());
-    return nullptr;
-  }
-  SDL_FreeSurface(surface);
-  return texture;
 }

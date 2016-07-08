@@ -3,7 +3,7 @@ project(BunkerBuilder)
 
 set(CMAKE_CXX_STANDARD 14)
 
-set(SOURCE_FILES main.cpp namegen.h random.h game_base.h)
+set(SOURCE_FILES main.cpp namegen.h random.h game_base.h sdl_base.h)
 add_executable(BunkerBuilder ${SOURCE_FILES})
 
 INCLUDE(FindPkgConfig)
