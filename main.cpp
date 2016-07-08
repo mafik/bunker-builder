@@ -1,39 +1,23 @@
 /* TODO: frame sync menu system working with mouse */
 
 #include <cstdio>
+#include <cstdlib>
 #include <vector>
 #include <map>
 #include <deque>
-#include <cstdarg>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
 #include <set>
 #include <functional>
 #include "namegen.h"
 #include "utils.h"
+#include "game_base.h"
 
 using namespace std;
 using namespace bb;
 
-typedef pair < i64, i64 > Cell;
-typedef pair < i64, i64 > Point;
-
 Point camera;
 double scale = 1;
-
-constexpr i64 W = 100;
-constexpr i64 H = 200;
-
-enum StructureType {
-  NONE = 0,
-  STAIRCASE,
-  CORRIDOR,
-  WORKSHOP
-};
-
-struct Structure {
-  StructureType type;
-};
 
 map < Cell, Structure * >cells;
 map < Cell, StructureType > plans;
@@ -53,34 +37,7 @@ struct Button {
 vector < Button * >buttons;
 Button *active_button = nullptr;
 
-enum Command {
-  COMMAND_SELECT = 0, COMMAND_STAIRCASE, COMMAND_CORRIDOR, COMMAND_WORKSHOP
-};
-
 Command active_command = COMMAND_SELECT;
-
-Cell cellFromPoint(Point point) {
-  return Cell(div_floor(point.first, H), div_floor(point.second, W));
-}
-
-Point pointFromCell(Cell cell) {
-  return Point(cell.first * H, cell.second * W);
-}
-
-struct Staircase:Structure {
-  Staircase() {
-    type = STAIRCASE;
-}};
-
-struct Corridor:Structure {
-  Corridor() {
-    type = CORRIDOR;
-}};
-
-struct Workshop:Structure {
-  Workshop() {
-    type = WORKSHOP;
-}};
 
 bool is_structure(Cell cell, StructureType structure_type) {
   auto it = cells.find(cell);
@@ -91,16 +48,13 @@ bool is_structure(Cell cell, StructureType structure_type) {
 }
 
 bool can_travel_vertically(Cell cell) {
-  return (cell.first == 0) || is_structure(cell, STAIRCASE);
+  return (cell.row == 0) || is_structure(cell, STAIRCASE);
 }
 
 bool can_travel(Cell cell) {
-  if (cell.first == 0)
+  if (cell.row == 0)
     return true;
-  auto it = cells.find(cell);
-  if (it == cells.end())
-    return false;
-  return true;
+  return cells.find(cell) != cells.end();
 }
 
 struct Dwarf {
@@ -110,8 +64,8 @@ struct Dwarf {
     const int w = 82;
     const int h = 100;
      return {
-    (int) ((pos.second + (W - w) / 2 - camera.second) * scale),
-        (int) ((pos.first + H - h - camera.first) * scale), int (w * scale),
+    (int) ((pos.x + (W - w) / 2 - camera.x) * scale),
+        (int) ((pos.y + H - h - camera.y) * scale), int (w * scale),
         int (h * scale)};
   }
   static Dwarf *make_random() {
@@ -126,7 +80,7 @@ struct Dwarf {
   }
 
   void move() {
-    Cell start = cellFromPoint(pos);
+    Cell start = Cell(pos);
     map < Cell, Cell > visited;
     deque < pair < Cell, Cell >> Q;
     Q.push_back(make_pair(start, start));
@@ -156,23 +110,23 @@ struct Dwarf {
         }
         // say(format("I'm going towards %llu, %llu", current.first,
         // current.second));
-        Point dest_pos = pointFromCell(current);
-        pos.first += limit_abs < i64 > (dest_pos.first - pos.first, 3);
-        pos.second += limit_abs < i64 > (dest_pos.second - pos.second, 5);
+        Point dest_pos = Point(current);
+        pos.y += limit_abs < i64 > (dest_pos.y - pos.y, 3);
+        pos.x += limit_abs < i64 > (dest_pos.x - pos.x, 5);
         // say(format("My current pos: %lld %lld", pos.first,
         // pos.second));
         break;
       }
-      Cell right = make_pair(current.first, current.second + 1);
-      Cell left = make_pair(current.first, current.second - 1);
-      if ((current.second > 0) && can_travel(left))
+      Cell right = { current.row, current.col + 1 };
+      Cell left = { current.row, current.col - 1 };
+      if ((current.col > 0) && can_travel(left))
         Q.push_back(make_pair(left, current));
       if (can_travel(right))
         Q.push_back(make_pair(right, current));
-      Cell above = make_pair(current.first - 1, current.second);
-      Cell below = make_pair(current.first + 1, current.second);
+      Cell above = { current.row - 1, current.col };
+      Cell below = { current.row + 1, current.col };
       if (can_travel_vertically(current)) {
-        if ((current.first > 0) && (can_travel_vertically(above)))
+        if ((current.row > 0) && (can_travel_vertically(above)))
           Q.push_back(make_pair(above, current));
         if (can_travel_vertically(below))
           Q.push_back(make_pair(below, current));
@@ -190,7 +144,7 @@ void draw_SDL();
 void input_SDL();
 
 void add_structure(int level, int row, Structure * structure) {
-  Cell coord = make_pair(level, row);
+  Cell coord = { level, row };
   auto it = cells.find(coord);
   if (it == cells.end()) {
     cells.insert(make_pair(coord, structure));
@@ -206,8 +160,7 @@ bool loop = true;
 int main() {
   if (!init_SDL())
     return 1;
-  Dwarf *d = Dwarf::make_random();
-  dwarves.insert(d);
+  dwarves.insert(Dwarf::make_random());
   add_structure(1, 5, new Staircase());
   add_structure(2, 5, new Staircase());
   add_structure(3, 5, new Staircase());
@@ -217,11 +170,12 @@ int main() {
 
   while (loop) {
     input_SDL();
-  for (Dwarf * d:dwarves) {
+    for (Dwarf * d : dwarves) {
       d->move();
     }
     draw_SDL();
   }
+  SDL_Quit();
   return 0;
 }
 
@@ -233,18 +187,17 @@ int middle_down_time;
 void set_scale(double new_scale) {
   int mx, my;
   SDL_GetMouseState(&mx, &my);
-  i64 cx = camera.second + i64(mx / scale);
-  i64 cy = camera.first + i64(my / scale);
+  i64 cx = camera.x + i64(mx / scale);
+  i64 cy = camera.y + i64(my / scale);
   scale = clamp(new_scale, 0.1, 10.);
-  camera.first = cy - i64(my / scale);
-  camera.second = cx - i64(mx / scale);
+  camera.y = cy - i64(my / scale);
+  camera.x = cx - i64(mx / scale);
 }
 
 void GetMouseCell(Cell * out) {
   int mx, my;
   SDL_GetMouseState(&mx, &my);
-  *out = cellFromPoint( {
-                       camera.first + my / scale, camera.second + mx / scale});
+  *out = Cell(Point(camera.y + my / scale, camera.x + mx / scale));
 }
 
 void TogglePlan(const Cell & c, StructureType structure_type) {
@@ -265,12 +218,6 @@ void input_SDL() {
       loop = false;
     else if (event.type == SDL_KEYDOWN) {
       switch (event.key.keysym.sym) {
-          /* 
-             case SDLK_RIGHT: playerPos.x += movementFactor; break; case
-             SDLK_LEFT: playerPos.x -= movementFactor; break; // Remeber 0,0 in 
-             SDL is left-top. So when the user pressus down, the y need to
-             increase case SDLK_DOWN: playerPos.y += movementFactor; break; case 
-             SDLK_UP: playerPos.y -= movementFactor; break; */
         default:
           loop = false;
           break;
@@ -279,8 +226,8 @@ void input_SDL() {
       if (event.button.button == SDL_BUTTON_MIDDLE) {
         middle_down = true;
         middle_down_time = SDL_GetTicks();
-        middle_down_x = camera.second + i64(event.button.x / scale);
-        middle_down_y = camera.first + i64(event.button.y / scale);
+        middle_down_x = camera.x + i64(event.button.x / scale);
+        middle_down_y = camera.y + i64(event.button.y / scale);
       } else if (event.button.button == SDL_BUTTON_LEFT) {
         if (event.button.x < 100) {
           int ind = event.button.y / 100;
@@ -326,8 +273,8 @@ void input_SDL() {
       }
     } else if (event.type == SDL_MOUSEMOTION) {
       if (middle_down) {
-        camera.first = middle_down_y - i64(event.motion.y / scale);
-        camera.second = middle_down_x - i64(event.motion.x / scale);
+        camera.y = middle_down_y - i64(event.motion.y / scale);
+        camera.x = middle_down_x - i64(event.motion.x / scale);
       }
       if (fill_structure != NONE) {
         Cell c;
@@ -350,16 +297,16 @@ SDL_Texture *GetTextureForStructureType(StructureType structure_type) {
 SDL_Texture *get_texture_for_cell(const Cell & cell) {
   auto it = cells.find(cell);
   if (it == cells.end()) {
-    return cell.first <= 0 ? sky : textures[NONE];
+    return cell.row <= 0 ? sky : textures[NONE];
   }
   return GetTextureForStructureType(it->second->type);
 }
 
 void GetTileRect(int row, int col, SDL_Rect * out) {
-  out->x = int ((col * W - camera.second) * scale);
-  out->y = int ((row * H - camera.first) * scale);
-  out->w = int (((col + 1) * W - camera.second) * scale) - out->x;
-  out->h = int (((row + 1) * H - camera.first) * scale) - out->y;
+  out->x = int ((col * W - camera.x) * scale);
+  out->y = int ((row * H - camera.y) * scale);
+  out->w = int (((col + 1) * W - camera.x) * scale) - out->x;
+  out->h = int (((row + 1) * H - camera.y) * scale) - out->y;
 }
 
 void draw_SDL() {
@@ -367,15 +314,15 @@ void draw_SDL() {
 
   SDL_Rect tile_rect;
 
-  i64 left = i64(camera.second + 100 / scale);
+  i64 left = i64(camera.x + 100 / scale);
   i64 right = left + i64(windowRect.w / scale);
-  i64 top = camera.first;
+  i64 top = camera.y;
   i64 bottom = top + i64(windowRect.h / scale);
-  Cell top_left = cellFromPoint(Point(top, left));
-  Cell bottom_right = cellFromPoint(Point(bottom, right));
+  Cell top_left = Cell(Point(top, left));
+  Cell bottom_right = Cell(Point(bottom, right));
 
-  for (i64 row = top_left.first; row <= bottom_right.first; ++row) {
-    for (i64 col = top_left.second; col <= bottom_right.second; ++col) {
+  for (i64 row = top_left.row; row <= bottom_right.row; ++row) {
+    for (i64 col = top_left.col; col <= bottom_right.col; ++col) {
       Cell cell = { row, col };
       SDL_Texture *texture = get_texture_for_cell(cell);
       GetTileRect(row, col, &tile_rect);
@@ -400,7 +347,7 @@ for (Dwarf * d:dwarves) {
   if (active_command != COMMAND_SELECT) {
     Cell c;
     GetMouseCell(&c);
-    GetTileRect(c.first, c.second, &tile_rect);
+    GetTileRect(c.row, c.col, &tile_rect);
     SDL_RenderCopy(renderer, selection_texture, nullptr, &tile_rect);
   }
 
@@ -474,9 +421,6 @@ for (auto p:initializer_list < pair < string, Command >> {
     };
     buttons.push_back(b);
   }
-  /* 
-     buttons.push_back(new Button { LoadTexture("btn_dig.png"), []() {
-     active_command = COMMAND_DIG; } }); */
   return true;
 }
 
