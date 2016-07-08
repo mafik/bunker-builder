@@ -1,7 +1,6 @@
 /* TODO: frame sync menu system working with mouse */
 
 #include <cstdio>
-#include <cstdlib>
 #include <vector>
 #include <map>
 #include <deque>
@@ -39,7 +38,7 @@ Button *active_button = nullptr;
 
 Command active_command = COMMAND_SELECT;
 
-bool is_structure(Cell cell, StructureType structure_type) {
+bool IsStructureType(Cell cell, StructureType structure_type) {
   auto it = cells.find(cell);
   if (it == cells.end())
     return false;
@@ -47,11 +46,11 @@ bool is_structure(Cell cell, StructureType structure_type) {
     return it->second->type == structure_type;
 }
 
-bool can_travel_vertically(Cell cell) {
-  return (cell.row == 0) || is_structure(cell, STAIRCASE);
+bool CanTravelVertically(Cell cell) {
+  return (cell.row == 0) || IsStructureType(cell, STAIRCASE);
 }
 
-bool can_travel(Cell cell) {
+bool CanTravel(Cell cell) {
   if (cell.row == 0)
     return true;
   return cells.find(cell) != cells.end();
@@ -60,13 +59,13 @@ bool can_travel(Cell cell) {
 struct Dwarf {
   string name;
   Point pos;
-  SDL_Rect screen_position() {
-    const int w = 82;
-    const int h = 100;
-     return {
-    (int) ((pos.x + (W - w) / 2 - camera.x) * scale),
-        (int) ((pos.y + H - h - camera.y) * scale), int (w * scale),
-        int (h * scale)};
+  void GetEffectiveSDL_Rect(SDL_Rect* rect) {
+    int w = 82;
+    int h = 100;
+    rect->x = (int) ((pos.x + (W - w) / 2 - camera.x) * scale);
+    rect->y = (int) ((pos.y + H - h - camera.y) * scale);
+    rect->w = int (w * scale);
+    rect->h = int (h * scale);
   }
   static Dwarf *make_random() {
     Dwarf *d = new Dwarf();
@@ -101,7 +100,7 @@ struct Dwarf {
       // say(format("looking at %llu %llu", current.first,
       // current.second));
       visited[current] = source;
-      if (is_structure(current, WORKSHOP)) {
+      if (IsStructureType(current, WORKSHOP)) {
         // backtrack through bfs tree
         while (source != start) {
           pair = *visited.find(source);
@@ -119,27 +118,27 @@ struct Dwarf {
       }
       Cell right = { current.row, current.col + 1 };
       Cell left = { current.row, current.col - 1 };
-      if ((current.col > 0) && can_travel(left))
+      if ((current.col > 0) && CanTravel(left))
         Q.push_back(make_pair(left, current));
-      if (can_travel(right))
+      if (CanTravel(right))
         Q.push_back(make_pair(right, current));
       Cell above = { current.row - 1, current.col };
       Cell below = { current.row + 1, current.col };
-      if (can_travel_vertically(current)) {
-        if ((current.row > 0) && (can_travel_vertically(above)))
+      if (CanTravelVertically(current)) {
+        if ((current.row > 0) && (CanTravelVertically(above)))
           Q.push_back(make_pair(above, current));
-        if (can_travel_vertically(below))
+        if (CanTravelVertically(below))
           Q.push_back(make_pair(below, current));
       }
     }
   }
 };
 
-bool init_SDL();
+bool Init();
 
 SDL_Texture *LoadTexture(const string & filename);
 
-void draw_SDL();
+void Draw();
 
 void input_SDL();
 
@@ -158,7 +157,7 @@ bool loop = true;
  set < Dwarf * >dwarves;
 
 int main() {
-  if (!init_SDL())
+  if (!Init())
     return 1;
   dwarves.insert(Dwarf::make_random());
   add_structure(1, 5, new Staircase());
@@ -173,7 +172,7 @@ int main() {
     for (Dwarf * d : dwarves) {
       d->move();
     }
-    draw_SDL();
+    Draw();
   }
   SDL_Quit();
   return 0;
@@ -294,7 +293,7 @@ SDL_Texture *GetTextureForStructureType(StructureType structure_type) {
   return textures[structure_type];
 }
 
-SDL_Texture *get_texture_for_cell(const Cell & cell) {
+SDL_Texture *GetTextureForCell(const Cell &cell) {
   auto it = cells.find(cell);
   if (it == cells.end()) {
     return cell.row <= 0 ? sky : textures[NONE];
@@ -309,7 +308,7 @@ void GetTileRect(int row, int col, SDL_Rect * out) {
   out->h = int (((row + 1) * H - camera.y) * scale) - out->y;
 }
 
-void draw_SDL() {
+void Draw() {
   SDL_RenderClear(renderer);
 
   SDL_Rect tile_rect;
@@ -324,7 +323,7 @@ void draw_SDL() {
   for (i64 row = top_left.row; row <= bottom_right.row; ++row) {
     for (i64 col = top_left.col; col <= bottom_right.col; ++col) {
       Cell cell = { row, col };
-      SDL_Texture *texture = get_texture_for_cell(cell);
+      SDL_Texture *texture = GetTextureForCell(cell);
       GetTileRect(row, col, &tile_rect);
       SDL_RenderCopy(renderer, texture, nullptr, &tile_rect);
       auto it = plans.find(cell);
@@ -340,7 +339,8 @@ void draw_SDL() {
   }
 
 for (Dwarf * d:dwarves) {
-    SDL_Rect r = d->screen_position();
+    SDL_Rect r;
+    d->GetEffectiveSDL_Rect(&r);
     SDL_RenderCopy(renderer, dwarf, nullptr, &r);
   }
 
@@ -365,7 +365,7 @@ for (Dwarf * d:dwarves) {
   SDL_RenderPresent(renderer);
 }
 
-bool init_SDL() {
+bool Init() {
   if (SDL_Init(SDL_INIT_EVERYTHING) == -1) {
     fprintf(stderr, "Failed to initialize SDL : %s\n", SDL_GetError());
     return false;

@@ -8,6 +8,35 @@ namespace bb {
     constexpr i64 W = 100;
     constexpr i64 H = 200;
 
+    enum StructureType {
+        NONE = 0,
+        STAIRCASE,
+        CORRIDOR,
+        WORKSHOP
+    };
+
+    struct Structure {
+        StructureType type;
+    };
+
+    struct Staircase : Structure {
+        Staircase() {
+            type = STAIRCASE;
+        }
+    };
+
+    struct Corridor : Structure {
+        Corridor() {
+            type = CORRIDOR;
+        }
+    };
+
+    struct Workshop : Structure {
+        Workshop() {
+            type = WORKSHOP;
+        }
+    };
+
     struct Point;
 
     struct Cell {
@@ -40,35 +69,6 @@ namespace bb {
     };
 
     Cell::Cell(const Point &point) : row(div_floor(point.y, H)), col(div_floor(point.x, W)) { }
-
-    enum StructureType {
-        NONE = 0,
-        STAIRCASE,
-        CORRIDOR,
-        WORKSHOP
-    };
-
-    struct Structure {
-        StructureType type;
-    };
-
-    struct Staircase : Structure {
-        Staircase() {
-            type = STAIRCASE;
-        }
-    };
-
-    struct Corridor : Structure {
-        Corridor() {
-            type = CORRIDOR;
-        }
-    };
-
-    struct Workshop : Structure {
-        Workshop() {
-            type = WORKSHOP;
-        }
-    };
 
     enum Command {
         COMMAND_SELECT = 0, COMMAND_STAIRCASE, COMMAND_CORRIDOR, COMMAND_WORKSHOP
