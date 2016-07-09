@@ -1,5 +1,6 @@
 #ifndef BUNKERBUILDER_GAME_BASE_H
 #define BUNKERBUILDER_GAME_BASE_H
+
 #include <cstdio>
 #include <map>
 #include <set>
@@ -58,6 +59,8 @@ namespace bb {
         bool operator!=(const Cell &other) const {
             return row != other.row || col != other.col;
         }
+        
+        bool operator==(const Cell& other) const { return !(*this != other); }
 
         bool operator<(const Cell &other) const {
             if (row == other.row) return col < other.col;
@@ -89,6 +92,7 @@ namespace bb {
     struct AABB {
       i64 left, right, top, bottom; // bottom >= top (y axis grows downwards)
       AABB(const Dwarf&);
+      AABB(const Cell& c) : left(c.col * W), right((c.col + 1) * W - 1), top(c.row * H), bottom((c.row + 1) * H - 1) {}
     };
 
     map < Cell, Structure * >cells;
@@ -163,6 +167,7 @@ namespace bb {
                   continue;
               // say(format("looking at %llu %llu", current.first,
               // current.second));
+              if (source.row == current.row + 1 && !CanTravelVertically(source)) continue;
               visited[current] = source;
               if (is_destination(current)) {
                   // backtrack through bfs tree
@@ -181,7 +186,6 @@ namespace bb {
               }
               if (source.row == current.row && !CanTravel(current)) continue;
               if (source.row == current.row - 1 && !CanTravelVertically(current)) continue;
-              if (source.row == current.row + 1 && !CanTravelVertically(source)) continue;
               Cell right = { current.row, current.col + 1 };
               Cell left = { current.row, current.col - 1 };
               if (current.col > 0)
@@ -216,7 +220,25 @@ namespace bb {
               int dy = limit_abs<i64>(waypoint.y - pos.y, 3);
               int dx = limit_abs<i64>(waypoint.x - pos.x, 5);
               pos.y += dy; pos.x += dx;
-              AABB dwarf_bb = AABB(*this);
+              if (Cell(waypoint) == destination) {
+                if (!CanTravel(destination)) {
+                  AABB dwarf_bb = AABB(*this);
+                  AABB dest_bb = AABB(destination);
+                  if((dx > 0) && (dwarf_bb.right >= dest_bb.left)) {
+                    pos.x -= dwarf_bb.right - dest_bb.left + 1;
+                  }
+                  if((dx < 0) && (dwarf_bb.left <= dest_bb.right)) {
+                    pos.x += dest_bb.right - dwarf_bb.left + 1;
+                  }
+                  
+                  if((dy > 0) && (dwarf_bb.bottom >= dest_bb.top)) {
+                    pos.y -= dwarf_bb.bottom - dest_bb.top + 1;
+                  }
+                  if((dy < 0) && (dwarf_bb.top <= dest_bb.bottom)) {
+                    pos.y += dest_bb.bottom - dwarf_bb.top + 1;
+                  }
+                }
+              }
             });
           if (!work_found) {
             Search([](const Cell& c) { return IsStructureType(c, WORKSHOP); }, MakeStep);
