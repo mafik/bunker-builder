@@ -72,8 +72,8 @@ namespace bb {
     void GetEffectiveSDL_Rect(const Dwarf& d, SDL_Rect* rect) {
         int w = 82;
         int h = 100;
-        rect->x = (int) ((d.pos.x + (W - w) / 2 - camera.x) * scale);
-        rect->y = (int) ((d.pos.y + H - h - camera.y) * scale);
+        rect->x = (int) ((d.pos.x - w / 2 - camera.x) * scale);
+        rect->y = (int) ((d.pos.y - h - camera.y) * scale);
         rect->w = int (w * scale);
         rect->h = int (h * scale);
     }
@@ -91,6 +91,56 @@ namespace bb {
             plans[c] = structure_type;
         }
     }
+    
+    bool InitTextures() {
+      sky = LoadTexture("sky.png");
+      dwarf = LoadTexture("dwarf.gif");
+      textures[NONE] = LoadTexture("ground.png");
+      textures[STAIRCASE] = LoadTexture("staircase.png");
+      textures[CORRIDOR] = LoadTexture("corridor.png");
+      textures[WORKSHOP] = LoadTexture("corridor.png");
+
+      selection_texture = LoadTexture("block_selection.png");
+
+      buttons.clear();
+      for (auto p : initializer_list<pair < string, Command >> {
+                {
+                        "btn_corridor.png", COMMAND_CORRIDOR}
+              , {
+                        "btn_staircase.png", COMMAND_STAIRCASE}
+              , {
+                        "btn_workshop.png", COMMAND_WORKSHOP}
+      }
+              ) {
+          Button *b = new Button();
+          b->texture = LoadTexture(p.first);
+          Command c = p.second;
+          b->action =[c] (Button * self) {
+              if (active_button == self) {
+                  active_button = nullptr;
+                  active_command = COMMAND_SELECT;
+              } else {
+                  active_button = self;
+                  active_command = c;
+              }
+          };
+          buttons.push_back(b);
+      }
+      return true;
+    }
+    
+    bool InitRenderer() {
+      if (renderer) SDL_DestroyRenderer(renderer);
+      renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+      if (renderer == nullptr) {
+          fprintf(stderr, "Failed to create renderer : %s\n", SDL_GetError());
+          return false;
+      }
+      SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");
+      SDL_GetRendererOutputSize(renderer, &windowRect.w, &windowRect.h);
+      SDL_SetRenderDrawColor(renderer, 64, 0, 0, 255);
+      return InitTextures();
+    }
 
     bool HandleInput() {
         SDL_Event event;
@@ -100,7 +150,9 @@ namespace bb {
             else if (event.type == SDL_KEYDOWN) {
                 switch (event.key.keysym.sym) {
                     default:
-                        return false;
+                        windowRect.w += 100;
+                        //InitRenderer();
+                        return true;
                 }
             } else if (event.type == SDL_MOUSEBUTTONDOWN) {
                 if (event.button.button == SDL_BUTTON_MIDDLE) {
@@ -166,6 +218,17 @@ namespace bb {
                 }
             } else if (event.type == SDL_MOUSEWHEEL) {
                 set_scale(scale * exp2(event.wheel.y / 4.));
+            } else if (event.type == SDL_WINDOWEVENT) {
+              switch(event.window.event) {
+                case SDL_WINDOWEVENT_RESIZED:
+                  windowRect.w = event.window.data1;
+                  windowRect.h = event.window.data2;
+                  break;
+                defualt:
+                  windowRect.w += 100;//= event.window.data1;
+                  windowRect.h += 100; //= event.window.data2;
+                  break;
+              }
             }
         }
         return true;
@@ -253,56 +316,13 @@ namespace bb {
             return false;
         }
         window =
-                SDL_CreateWindow("Server", windowRect.x, windowRect.y, windowRect.w,
-                                 windowRect.h, 0);
+                SDL_CreateWindow("Server", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, windowRect.w,
+                                 windowRect.h, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
         if (window == nullptr) {
             fprintf(stderr, "Failed to create window : %s\n", SDL_GetError());
             return false;
         }
-        renderer =
-                SDL_CreateRenderer(window, -1,
-                                   SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-        if (renderer == nullptr) {
-            fprintf(stderr, "Failed to create renderer : %s\n", SDL_GetError());
-            return false;
-        }
-        SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");
-        // Set size of renderer to the same as window
-        SDL_RenderSetLogicalSize(renderer, windowRect.w, windowRect.h);
-        // Set color of renderer to red
-        SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
-        sky = LoadTexture("sky.png");
-        dwarf = LoadTexture("dwarf.gif");
-        textures[NONE] = LoadTexture("ground.png");
-        textures[STAIRCASE] = LoadTexture("staircase.png");
-        textures[CORRIDOR] = LoadTexture("corridor.png");
-        textures[WORKSHOP] = LoadTexture("corridor.png");
-
-        selection_texture = LoadTexture("block_selection.png");
-
-        for (auto p:initializer_list < pair < string, Command >> {
-                  {
-                          "btn_corridor.png", COMMAND_CORRIDOR}
-                , {
-                          "btn_staircase.png", COMMAND_STAIRCASE}
-                , {
-                          "btn_workshop.png", COMMAND_WORKSHOP}
-        }
-                ) {
-            Button *b = new Button();
-            b->texture = LoadTexture(p.first);
-            Command c = p.second;
-            b->action =[c] (Button * self) {
-                if (active_button == self) {
-                    active_button = nullptr;
-                    active_command = COMMAND_SELECT;
-                } else {
-                    active_button = self;
-                    active_command = c;
-                }
-            };
-            buttons.push_back(b);
-        }
+        if (!InitRenderer()) return false;
         return true;
     }
 
