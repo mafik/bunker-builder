@@ -5,6 +5,7 @@
 #include <set>
 #include <deque>
 #include <vector>
+#include <functional>
 #include "utils.h"
 
 namespace bb {
@@ -72,9 +73,23 @@ namespace bb {
         Point() : y(0), x(0) { }
 
         Point(const Cell &cell) : y(cell.row * H), x(cell.col * W) { }
+        
+        i64 MetroDist(const Point& other) {
+          return abs(x - other.x) + abs(y - other.y);
+        }
     };
+    
+    Point Waypoint(const Cell& cell) {
+      return Point((cell.row + 1) * H - 1, (cell.col) * W + W / 2);
+    }
 
     Cell::Cell(const Point &point) : row(div_floor(point.y, H)), col(div_floor(point.x, W)) { }
+    
+    struct Dwarf;
+    struct AABB {
+      i64 left, right, top, bottom; // bottom >= top (y axis grows downwards)
+      AABB(const Dwarf&);
+    };
 
     map < Cell, Structure * >cells;
     map < Cell, StructureType > plans;
@@ -107,6 +122,10 @@ namespace bb {
             return true;
         return cells.find(cell) != cells.end();
     }
+    
+    bool HasPlan(Cell cell) {
+      return plans.find(cell) != plans.end();
+    }
 
     struct Dwarf {
         string name;
@@ -115,68 +134,104 @@ namespace bb {
             Dwarf *d = new Dwarf();
             d->name = namegen::gen();
             d->Say("Hello!");
+            d->pos = Waypoint(Cell(0,2));
             return d;
         }
 
         void Say(string text) {
             printf("%s: %s\n", name.c_str(), text.c_str());
         }
+        /** This will find the path to closest cell for which "is_destination" returns true.
+            Then "next_step" will be called with the next cell as the argument. */
+        bool Search(function<bool (const Cell&)> is_destination,
+                    function<void (const Point&)> next_step) {
+          Cell start = Cell(pos);
+          map < Cell, Cell > visited;
+          deque < pair < Cell, Cell >> Q;
+          Q.push_back(make_pair(start, start));
+          int search_counter = 0;
+          while (!Q.empty()) {
+              ++search_counter;
+              if (search_counter > 100) {
+                break;
+              }
+              pair < Cell, Cell > pair = Q.front();
+              Cell current = pair.first;
+              Cell source = pair.second;
+              Q.pop_front();
+              if (visited.find(current) != visited.end())
+                  continue;
+              // say(format("looking at %llu %llu", current.first,
+              // current.second));
+              visited[current] = source;
+              if (is_destination(current)) {
+                  // backtrack through bfs tree
+                  while (source != start) {
+                      pair = *visited.find(source);
+                      current = pair.first;
+                      source = pair.second;
+                  }
+                  Point first = Waypoint(start);
+                  Point second = Waypoint(current);
+                  i64 block_dist = first.MetroDist(second);
+                  i64 my_dist = pos.MetroDist(second);
+                  if (my_dist <= block_dist) next_step(second);
+                  else next_step(first);
+                  return true;
+              }
+              if (source.row == current.row && !CanTravel(current)) continue;
+              if (source.row == current.row - 1 && !CanTravelVertically(current)) continue;
+              if (source.row == current.row + 1 && !CanTravelVertically(source)) continue;
+              Cell right = { current.row, current.col + 1 };
+              Cell left = { current.row, current.col - 1 };
+              if (current.col > 0)
+                  Q.push_back(make_pair(left, current));
+              Q.push_back(make_pair(right, current));
+              Cell above = { current.row - 1, current.col };
+              Cell below = { current.row + 1, current.col };
+              if (current.row > 0)
+                Q.push_back(make_pair(above, current));
+              Q.push_back(make_pair(below, current));
+              
+          }
+          return false;
+        }
 
         void Move() {
-            Cell start = Cell(pos);
-            map < Cell, Cell > visited;
-            deque < pair < Cell, Cell >> Q;
-            Q.push_back(make_pair(start, start));
-            int search_counter = 0;
-            while (!Q.empty()) {
-                ++search_counter;
-                if (search_counter > 100) {       // searched 100 cells and didn't found
-                    // anything - cancel
-                    // say("I have no idea where to go...");
-                    break;
-                }
-                pair < Cell, Cell > pair = Q.front();
-                Cell current = pair.first;
-                Cell source = pair.second;
-                Q.pop_front();
-                if (visited.find(current) != visited.end())
-                    continue;
-                // say(format("looking at %llu %llu", current.first,
-                // current.second));
-                visited[current] = source;
-                if (IsStructureType(current, WORKSHOP)) {
-                    // backtrack through bfs tree
-                    while (source != start) {
-                        pair = *visited.find(source);
-                        current = pair.first;
-                        source = pair.second;
-                    }
-                    // say(format("I'm going towards %llu, %llu", current.first,
-                    // current.second));
-                    Point dest_pos = Point(current);
-                    pos.y += limit_abs < i64 > (dest_pos.y - pos.y, 3);
-                    pos.x += limit_abs < i64 > (dest_pos.x - pos.x, 5);
-                    // say(format("My current pos: %lld %lld", pos.first,
-                    // pos.second));
-                    break;
-                }
-                Cell right = { current.row, current.col + 1 };
-                Cell left = { current.row, current.col - 1 };
-                if ((current.col > 0) && CanTravel(left))
-                    Q.push_back(make_pair(left, current));
-                if (CanTravel(right))
-                    Q.push_back(make_pair(right, current));
-                Cell above = { current.row - 1, current.col };
-                Cell below = { current.row + 1, current.col };
-                if (CanTravelVertically(current)) {
-                    if ((current.row > 0) && (CanTravelVertically(above)))
-                        Q.push_back(make_pair(above, current));
-                    if (CanTravelVertically(below))
-                        Q.push_back(make_pair(below, current));
-                }
-            }
+          Cell destination;
+          auto MakeStep = [&](const Point& waypoint) {
+            /** What do we have: current position & waypoint with a direct line of sight.
+                2. Find the bounding box of the character.
+                3. Check if any of the corners touches the destination.
+                4. Find the bounding box of the destination.
+                5. Move away just enough to touch the destination. */
+            pos.y += limit_abs<i64>(waypoint.y - pos.y, 3);
+            pos.x += limit_abs<i64>(waypoint.x - pos.x, 5);
+          };
+          bool work_found = Search([&](const Cell& cell) {
+              bool ret = HasPlan(cell);
+              if(ret) destination = cell;
+              return ret;
+            }, [&](const Point& waypoint) {
+              int dy = limit_abs<i64>(waypoint.y - pos.y, 3);
+              int dx = limit_abs<i64>(waypoint.x - pos.x, 5);
+              pos.y += dy; pos.x += dx;
+              AABB dwarf_bb = AABB(*this);
+            });
+          if (!work_found) {
+            Search([](const Cell& c) { return IsStructureType(c, WORKSHOP); }, MakeStep);
+          }
         }
+        
+        static const int width = 82;
+        static const int height = 100;
     };
+    
+    AABB::AABB(const Dwarf& dwarf)
+      : left(dwarf.pos.x - Dwarf::width / 2)
+      , right(dwarf.pos.x + Dwarf::width / 2)
+      , top(dwarf.pos.y - Dwarf::height)
+      , bottom(dwarf.pos.y) {}
 
     set < Dwarf * >dwarves;
 }
