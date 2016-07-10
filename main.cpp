@@ -1,5 +1,3 @@
-/* TODO: frame sync menu system working with mouse */
-
 #include <SDL2/SDL.h>
 #include "namegen.h"
 #include "game_base.h"
