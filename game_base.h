@@ -265,7 +265,11 @@ namespace bb {
             if (!CanTravelVertically(current)) return false;
             dist += 2;
           }
-          if ((next.row != current.row + 1 || (plans.find(next) != plans.end() && plans[next]->structure_type == STAIRCASE)) && dwarf->TakeWorkAt(next)) {
+          bool is_below = next.row == current.row + 1;
+          auto plan_it = plans.find(next);
+          bool is_staircase_planned = plan_it != plans.end() &&
+                                      plan_it->second->structure_type == STAIRCASE;
+          if ((!is_below || is_staircase_planned) && dwarf->TakeWorkAt(next)) {
             // add the next cell to the bfs tree regardless of reachability
             visited[next] = current;
             source = current; current = next; 
