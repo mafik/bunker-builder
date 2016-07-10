@@ -23,27 +23,31 @@ namespace bb {
         WORKSHOP
     };
 
+    struct Dwarf;
+        
     struct Structure {
         StructureType type;
+        Dwarf* occupant = nullptr;
+        static Structure* New(StructureType);
     };
 
-    struct Staircase : Structure {
-        Staircase() {
-            type = STAIRCASE;
-        }
-    };
+    struct Staircase : Structure {};
 
-    struct Corridor : Structure {
-        Corridor() {
-            type = CORRIDOR;
-        }
-    };
+    struct Corridor : Structure {};
 
-    struct Workshop : Structure {
-        Workshop() {
-            type = WORKSHOP;
-        }
-    };
+    struct Workshop : Structure {};
+
+    Structure* Structure::New(StructureType type) {
+      Structure* s;
+      switch(type) {
+        case STAIRCASE: s = new Staircase(); break;
+        case CORRIDOR: s = new Corridor(); break;
+        case WORKSHOP: s = new Workshop(); break;
+        default: fprintf(stderr, "Unknown structure type: %d\n", type); return nullptr;
+      }
+      s->type = type;
+      return s;
+    }
 
     struct Point;
 
@@ -88,15 +92,21 @@ namespace bb {
 
     Cell::Cell(const Point &point) : row(div_floor(point.y, H)), col(div_floor(point.x, W)) { }
     
-    struct Dwarf;
     struct AABB {
       i64 left, right, top, bottom; // bottom >= top (y axis grows downwards)
       AABB(const Dwarf&);
       AABB(const Cell& c) : left(c.col * W), right((c.col + 1) * W - 1), top(c.row * H), bottom((c.row + 1) * H - 1) {}
     };
+    
+    struct Plan {
+      StructureType structure_type;
+      double progress;
+      Dwarf* assignee;
+      Plan(StructureType _structure_type) : structure_type(_structure_type), progress(0), assignee(nullptr) {}
+    };
 
     map < Cell, Structure * >cells;
-    map < Cell, StructureType > plans;
+    map < Cell, Plan * > plans;
 
     void AddStructure(int row, int col, Structure *structure) {
         Cell coord = { row, col };
@@ -134,114 +144,82 @@ namespace bb {
     struct Dwarf {
         string name;
         Point pos;
-        static Dwarf *MakeRandom() {
+        static Dwarf *MakeRandom(int row, int col) {
             Dwarf *d = new Dwarf();
             d->name = namegen::gen();
             d->Say("Hello!");
-            d->pos = Waypoint(Cell(0,2));
+            d->pos = Waypoint(Cell(row, col));
             return d;
         }
 
         void Say(string text) {
             printf("%s: %s\n", name.c_str(), text.c_str());
         }
-        /** This will find the path to closest cell for which "is_destination" returns true.
-            Then "next_step" will be called with the next cell as the argument. */
-        bool Search(function<bool (const Cell&)> is_destination,
-                    function<void (const Point&)> next_step) {
-          Cell start = Cell(pos);
-          map < Cell, Cell > visited;
-          deque < pair < Cell, Cell >> Q;
-          Q.push_back(make_pair(start, start));
-          int search_counter = 0;
-          while (!Q.empty()) {
-              ++search_counter;
-              if (search_counter > 100) {
-                break;
-              }
-              pair < Cell, Cell > pair = Q.front();
-              Cell current = pair.first;
-              Cell source = pair.second;
-              Q.pop_front();
-              if (visited.find(current) != visited.end())
-                  continue;
-              // say(format("looking at %llu %llu", current.first,
-              // current.second));
-              if (source.row == current.row + 1 && !CanTravelVertically(source)) continue;
-              visited[current] = source;
-              if (is_destination(current)) {
-                  // backtrack through bfs tree
-                  while (source != start) {
-                      pair = *visited.find(source);
-                      current = pair.first;
-                      source = pair.second;
-                  }
-                  Point first = Waypoint(start);
-                  Point second = Waypoint(current);
-                  i64 block_dist = first.MetroDist(second);
-                  i64 my_dist = pos.MetroDist(second);
-                  if (my_dist <= block_dist) next_step(second);
-                  else next_step(first);
-                  return true;
-              }
-              if (source.row == current.row && !CanTravel(current)) continue;
-              if (source.row == current.row - 1 && !CanTravelVertically(current)) continue;
-              Cell right = { current.row, current.col + 1 };
-              Cell left = { current.row, current.col - 1 };
-              if (current.col > 0)
-                  Q.push_back(make_pair(left, current));
-              Q.push_back(make_pair(right, current));
-              Cell above = { current.row - 1, current.col };
-              Cell below = { current.row + 1, current.col };
-              if (current.row > 0)
-                Q.push_back(make_pair(above, current));
-              Q.push_back(make_pair(below, current));
-              
+        
+        Plan* plan = nullptr;
+        Structure* structure = nullptr;
+        Cell destination = Cell(0,0);
+        
+        bool TakeWorkAt(Cell cell) {
+          auto plan_it = plans.find(cell);
+          if(plan_it != plans.end() && plan_it->second->assignee == nullptr) {
+            destination = cell;
+            plan = plan_it->second;
+            plan->assignee = this;
+            return true;
+          }
+          auto struct_it = cells.find(cell);
+          if (struct_it != cells.end() && struct_it->second->type == WORKSHOP && struct_it->second->occupant == nullptr) {
+            destination = cell;
+            structure = struct_it->second;
+            structure->occupant = this;
+            return true;
           }
           return false;
         }
-
-        void Move() {
-          Cell destination;
-          auto MakeStep = [&](const Point& waypoint) {
-            /** What do we have: current position & waypoint with a direct line of sight.
-                2. Find the bounding box of the character.
-                3. Check if any of the corners touches the destination.
-                4. Find the bounding box of the destination.
-                5. Move away just enough to touch the destination. */
-            pos.y += limit_abs<i64>(waypoint.y - pos.y, 3);
-            pos.x += limit_abs<i64>(waypoint.x - pos.x, 5);
-          };
-          bool work_found = Search([&](const Cell& cell) {
-              bool ret = HasPlan(cell);
-              if(ret) destination = cell;
-              return ret;
-            }, [&](const Point& waypoint) {
-              int dy = limit_abs<i64>(waypoint.y - pos.y, 3);
-              int dx = limit_abs<i64>(waypoint.x - pos.x, 5);
-              pos.y += dy; pos.x += dx;
-              if (Cell(waypoint) == destination) {
-                if (!CanTravel(destination)) {
-                  AABB dwarf_bb = AABB(*this);
-                  AABB dest_bb = AABB(destination);
-                  if((dx > 0) && (dwarf_bb.right >= dest_bb.left)) {
-                    pos.x -= dwarf_bb.right - dest_bb.left + 1;
-                  }
-                  if((dx < 0) && (dwarf_bb.left <= dest_bb.right)) {
-                    pos.x += dest_bb.right - dwarf_bb.left + 1;
-                  }
-                  
-                  if((dy > 0) && (dwarf_bb.bottom >= dest_bb.top)) {
-                    pos.y -= dwarf_bb.bottom - dest_bb.top + 1;
-                  }
-                  if((dy < 0) && (dwarf_bb.top <= dest_bb.bottom)) {
-                    pos.y += dest_bb.bottom - dwarf_bb.top + 1;
-                  }
-                }
+        
+        void ReturnWork() {
+          if (plan) {
+            plan->assignee = nullptr;
+            plan = nullptr;
+          }
+          if (structure) {
+            structure->occupant = nullptr;
+            structure = nullptr;
+          }
+        }
+        
+        void GoToWork(const Point& waypoint) {
+          int dy = limit_abs<i64>(waypoint.y - pos.y, 3);
+          int dx = limit_abs<i64>(waypoint.x - pos.x, 5);
+          pos.y += dy; pos.x += dx;
+          if (Cell(waypoint) == destination) {
+            if (!CanTravel(destination)) {
+              AABB dwarf_bb = AABB(*this);
+              AABB dest_bb = AABB(destination);
+              if((dx > 0) && (dwarf_bb.right >= dest_bb.left)) {
+                pos.x -= dwarf_bb.right - dest_bb.left + 1; dx = 0;
               }
-            });
-          if (!work_found) {
-            Search([](const Cell& c) { return IsStructureType(c, WORKSHOP); }, MakeStep);
+              if((dx < 0) && (dwarf_bb.left <= dest_bb.right)) {
+                pos.x += dest_bb.right - dwarf_bb.left + 1; dx = 0;
+              }
+              
+              if((dy > 0) && (dwarf_bb.bottom >= dest_bb.top)) {
+                pos.y -= dwarf_bb.bottom - dest_bb.top + 1; dy = 0;
+              }
+              if((dy < 0) && (dwarf_bb.top <= dest_bb.bottom)) {
+                pos.y += dest_bb.bottom - dwarf_bb.top + 1; dy = 0;
+              }
+            }
+            if(plan && dx == 0 && dy == 0) {
+              plan->progress += 0.01;
+              if (plan->progress >= 1) {
+                cells[destination] = Structure::New(plan->structure_type);
+                plans.erase(destination);
+                delete plan;
+                plan = nullptr;
+              }
+            }
           }
         }
         
@@ -256,6 +234,77 @@ namespace bb {
       , bottom(dwarf.pos.y) {}
 
     set < Dwarf * >dwarves;
+    
+    // TODO: preferential weighing of distances
+    
+    void Tick() {
+      map<Dwarf*, map<Cell, Cell>> shortest_path_tree;
+      multimap<double, tuple<Dwarf*, Cell, Cell>> Q; 
+      for (Dwarf * d : dwarves) {
+        auto pos = d->pos;
+        if (d->TakeWorkAt(pos)) { // skip search if already "standing" on a job
+          d->GoToWork(Waypoint(pos));
+        } else {
+          Q.insert(make_pair(0, make_tuple(d, pos, pos)));
+        }
+      }
+      int search_counter = 0;
+      while(!Q.empty()) {
+        auto p = Q.begin();
+        double dist = p->first;
+        Dwarf* dwarf = get<0>(p->second);
+        Cell current = get<1>(p->second);
+        Cell source = get<2>(p->second);
+        Q.erase(p);
+        if (dwarf->plan || dwarf->structure) continue;
+        auto& visited = shortest_path_tree[dwarf];
+        if (visited.find(current) != visited.end()) continue;
+        visited[current] = source;
+        auto Peek = [&](Cell next) -> bool {
+          if (next.row == current.row - 1) {
+            if (!CanTravelVertically(current)) return false;
+            dist += 2;
+          }
+          if (dwarf->TakeWorkAt(next)) {
+            // add the next cell to the bfs tree regardless of reachability
+            visited[next] = current;
+            source = current; current = next; 
+            // backtrack through bfs tree
+            Cell start = Cell(dwarf->pos);
+            while (source != start) {
+                auto p = visited.find(source);
+                current = p->first;
+                source = p->second;
+            }
+            Point first = Waypoint(source); // cell where the dwarf is standing currently
+            Point second = Waypoint(current); // next cell in the path
+            // prevent moving backwards by looking one waypoint ahead
+            i64 block_dist = first.MetroDist(second);
+            i64 my_dist = dwarf->pos.MetroDist(second);
+            if (my_dist <= block_dist) dwarf->GoToWork(second);
+            else dwarf->GoToWork(first);
+            return true;
+          }
+          if (next.row == current.row) {
+            if (!CanTravel(next)) return false;
+            dist += 1;
+          }
+          if (next.row == current.row + 1) {
+            if (!CanTravelVertically(next)) return false;
+            dist += 2;
+          }
+          Q.insert(make_pair(dist, make_tuple(dwarf, next, current)));
+          return false;
+        };
+        if (++search_counter > 1000) break;
+        if (Peek({ current.row, current.col + 1 })) continue;
+        if ((current.col > 0) && Peek({ current.row, current.col - 1 })) continue;
+        if (Peek({ current.row + 1, current.col })) continue;
+        if ((current.row > 0) && Peek({ current.row - 1, current.col })) continue;
+      }
+      
+      for (Dwarf * d : dwarves) d->ReturnWork();
+    }
 }
 
 #endif //BUNKERBUILDER_GAME_BASE_H
