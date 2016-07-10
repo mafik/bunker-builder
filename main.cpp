@@ -11,18 +11,17 @@ using namespace bb;
 int main() {
   if (!Init())
     return 1;
-  dwarves.insert(Dwarf::MakeRandom());
-  AddStructure(1, 5, new Staircase());
-  AddStructure(2, 5, new Staircase());
-  AddStructure(3, 5, new Staircase());
-  AddStructure(3, 4, new Corridor());
-  AddStructure(3, 3, new Corridor());
-  AddStructure(3, 2, new Workshop());
+  dwarves.insert(Dwarf::MakeRandom(0, 2));
+  dwarves.insert(Dwarf::MakeRandom(2, 5));
+  AddStructure(1, 5, Structure::New(STAIRCASE));
+  AddStructure(2, 5, Structure::New(STAIRCASE));
+  AddStructure(3, 5, Structure::New(STAIRCASE));
+  AddStructure(3, 4, Structure::New(CORRIDOR));
+  AddStructure(3, 3, Structure::New(CORRIDOR));
+  AddStructure(3, 2, Structure::New(WORKSHOP));
 
   while (HandleInput()) {
-    for (Dwarf * d : dwarves) {
-      d->Move();
-    }
+    Tick();
     Draw();
   }
   SDL_Quit();
