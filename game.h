@@ -9,6 +9,15 @@
 #include <functional>
 #include "utils.h"
 
+/**
+ * Each cell is able to hold arbitrary number of small items.
+ * Each corridor is able to hold one structure.
+ *
+ * When a user is pointing at a cell, a detailed box about all therein located items appears.
+ *
+ * Todo (at some point): windowing system for controlling dwarves :(
+ */
+
 namespace bb {
 
     using namespace std;
@@ -185,7 +194,7 @@ namespace bb {
           }
           auto struct_it = cells.find(cell);
           if (struct_it != cells.end() && struct_it->second->type == WORKSHOP && struct_it->second->occupant == nullptr) {
-            SaySlow("I'll just work at this workshop...");
+            SaySlow("I'll work at this workshop...");
             destination = cell;
             structure = struct_it->second;
             structure->occupant = this;

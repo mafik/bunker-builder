@@ -290,7 +290,7 @@ namespace bb {
           SDL_FreeSurface(surface);
         }
 
-        ~Text() { SDL_DestroyTexture(texture); }
+        virtual ~Text() { SDL_DestroyTexture(texture); }
     };
 
     struct SaidText : Text {
@@ -353,9 +353,11 @@ namespace bb {
         int y = name_texture->size.y;
         auto& said = said_texts[d];
         int now = SDL_GetTicks();
-        said.resize(remove_if(said.begin(), said.end(), [now](const SaidText* said_text) {
+        auto new_end = remove_if(said.begin(), said.end(), [now](const SaidText* said_text) {
             return now - said_text->time_said > 5000;
-        }) - said.begin());
+        });
+        for(auto it = new_end; it != said.end(); ++it) delete *it;
+        said.resize(new_end - said.begin());
         for (SaidText *said_text : said) {
           said_text->size.x = r.x + r.w / 2 - said_text->size.w / 2;
           said_text->size.y = y - said_text->size.h;
