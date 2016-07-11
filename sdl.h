@@ -1,10 +1,10 @@
-#ifndef BUNKERBUILDER_SDL_BASE_H
-#define BUNKERBUILDER_SDL_BASE_H
+#ifndef BUNKERBUILDER_SDL_H
+#define BUNKERBUILDER_SDL_H
 #include <string>
 #include <functional>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
-#include "game_base.h"
+#include "game.h"
 
 namespace bb {
     using namespace std;

@@ -1,5 +1,5 @@
-#ifndef BUNKERBUILDER_GAME_BASE_H
-#define BUNKERBUILDER_GAME_BASE_H
+#ifndef BUNKERBUILDER_GAME_H
+#define BUNKERBUILDER_GAME_H
 
 #include <cstdio>
 #include <map>

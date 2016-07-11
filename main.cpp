@@ -1,7 +1,7 @@
 #include <SDL2/SDL.h>
 #include "namegen.h"
-#include "game_base.h"
-#include "sdl_base.h"
+#include "game.h"
+#include "sdl.h"
 
 using namespace std;
 using namespace bb;
