@@ -85,11 +85,14 @@ namespace bb {
     }
 
     void TogglePlan(const Cell & c, StructureType structure_type) {
-        if (plans[c] == structure_type) {
-            plans.erase(c);
-        } else {
-            plans[c] = structure_type;
-        }
+      auto it = plans.find(c);
+      if (it != plans.end()) {
+        bool the_same = it->second->structure_type == structure_type;
+        delete it->second;
+        plans.erase(it);
+        if (the_same) return;
+      }
+      plans[c] = new Plan(structure_type);
     }
     
     bool InitTextures() {
@@ -273,12 +276,21 @@ namespace bb {
                 SDL_RenderCopy(renderer, texture, nullptr, &tile_rect);
                 auto it = plans.find(cell);
                 if (it != plans.end()) {
-                    SDL_Texture *structure_texture = GetTextureForStructureType(it->second);
+                    int orig_h = tile_rect.h;
+                    tile_rect.h *= 1 - it->second->progress;
+                    SDL_Rect source_rect = {0,0,W,int(H * (1 - it->second->progress))};
+                    SDL_Texture *structure_texture = GetTextureForStructureType(it->second->structure_type);
                     SDL_SetTextureAlphaMod(structure_texture, 64);
                     SDL_SetTextureBlendMode(structure_texture, SDL_BLENDMODE_BLEND);
-                    SDL_RenderCopy(renderer, structure_texture, nullptr, &tile_rect);
+                    SDL_RenderCopy(renderer, structure_texture, &source_rect, &tile_rect);
                     SDL_SetTextureBlendMode(structure_texture, SDL_BLENDMODE_NONE);
-                    // SDL_SetTextureAlphaMod(structure_texture, 255);
+                    source_rect.y = source_rect.h;
+                    source_rect.h = H - source_rect.h;
+                    tile_rect.y += tile_rect.h;
+                    tile_rect.h = orig_h - tile_rect.h;
+                    SDL_RenderCopy(renderer, structure_texture, &source_rect, &tile_rect);
+                    tile_rect.h = orig_h;
+                    //SDL_SetTextureAlphaMod(structure_texture, 255);
                 }
             }
         }
