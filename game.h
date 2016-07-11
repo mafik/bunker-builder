@@ -15,7 +15,7 @@
  *
  * When a user is pointing at a cell, a detailed box about all therein located items appears.
  *
- * Todo (at some point): windowing system for controlling dwarves :(
+ * When a dwarf is selected, buttons change to allow modifying his behavior
  */
 
 namespace bb {
@@ -171,7 +171,7 @@ namespace bb {
           said_something.run(&text);
         }
 
-        int last_said = 0;
+        int last_said = -5000;
         void SaySlow(const string& text) {
           int now = SDL_GetTicks();
           if (now - last_said > 5000) {
