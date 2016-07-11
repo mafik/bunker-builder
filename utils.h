@@ -44,7 +44,16 @@ namespace bb {
         size *= 2;                // Guess at a larger size (OS specific)
     }
   }
-  
+
+  template<class T>
+  struct Event {
+      vector<function<void (T* t)>> handlers;
+      void run(T* t) {
+        for(auto& handler : handlers) {
+          handler(t);
+        }
+      }
+  };
 }
 
 #endif //BUNKERBUILDER_UTILS_H

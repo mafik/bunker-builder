@@ -141,19 +141,34 @@ namespace bb {
       return plans.find(cell) != plans.end();
     }
 
+    Event<Dwarf> dwarf_created;
+
     struct Dwarf {
         string name;
         Point pos;
+        Event<string> said_something;
+
         static Dwarf *MakeRandom(int row, int col) {
             Dwarf *d = new Dwarf();
             d->name = namegen::gen();
-            d->Say("Hello!");
             d->pos = Waypoint(Cell(row, col));
+            dwarf_created.run(d);
+          d->Say("Hello!");
             return d;
         }
 
         void Say(string text) {
             printf("%s: %s\n", name.c_str(), text.c_str());
+          said_something.run(&text);
+        }
+
+        int last_said = 0;
+        void SaySlow(const string& text) {
+          int now = SDL_GetTicks();
+          if (now - last_said > 5000) {
+            last_said = now;
+            Say(text);
+          }
         }
         
         Plan* plan = nullptr;
@@ -170,6 +185,7 @@ namespace bb {
           }
           auto struct_it = cells.find(cell);
           if (struct_it != cells.end() && struct_it->second->type == WORKSHOP && struct_it->second->occupant == nullptr) {
+            SaySlow("I'll just work at this workshop...");
             destination = cell;
             structure = struct_it->second;
             structure->occupant = this;
