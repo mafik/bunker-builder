@@ -3,6 +3,7 @@
 
 #include <string>
 #include <functional>
+#include <unordered_map>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
 #include <SDL_ttf.h>
@@ -19,14 +20,15 @@ namespace bb {
     };
 
     enum Command {
-        COMMAND_SELECT = 0, COMMAND_STAIRCASE, COMMAND_CORRIDOR, COMMAND_WORKSHOP
+        COMMAND_SELECT = 0, COMMAND_STAIRCASE, COMMAND_CORRIDOR, COMMAND_MUSHROOM_FARM
     };
 
     SDL_Window *window;
     SDL_Renderer *renderer;
 
     SDL_Texture *selection_texture;
-    map<StructureType, SDL_Texture *> textures;
+    unordered_map<StructureType, SDL_Texture *> textures;
+    SDL_Texture *item_textures[LAST_ITEM_TYPE];
     SDL_Texture *sky;
     SDL_Texture *dwarf;
     SDL_Rect windowRect = {900, 300, 800, 1000};
@@ -40,21 +42,21 @@ namespace bb {
     double scale = 1;
 
     bool middle_down = false;
-    i64 middle_down_x, middle_down_y;
+    int middle_down_x, middle_down_y;
     double last_scale = .5;
     int middle_down_time;
 
     StructureType fill_structure;
     set<Cell> toggled_cells;
 
-    void set_scale(double new_scale) {
+    void SetScale(double new_scale) {
       int mx, my;
       SDL_GetMouseState(&mx, &my);
-      i64 cx = camera.x + i64(mx / scale);
-      i64 cy = camera.y + i64(my / scale);
+      int cx = camera.x + int(mx / scale);
+      int cy = camera.y + int(my / scale);
       scale = clamp(new_scale, 0.1, 10.);
-      camera.y = cy - i64(my / scale);
-      camera.x = cx - i64(mx / scale);
+      camera.y = cy - int(my / scale);
+      camera.x = cx - int(mx / scale);
     }
 
     SDL_Texture *LoadTexture(const string &filename) {
@@ -105,18 +107,18 @@ namespace bb {
       textures[NONE] = LoadTexture("ground.png");
       textures[STAIRCASE] = LoadTexture("staircase.png");
       textures[CORRIDOR] = LoadTexture("corridor.png");
-      textures[WORKSHOP] = LoadTexture("corridor.png");
+      textures[MUSHROOM_FARM] = LoadTexture("mushroom_farm.png");
 
       selection_texture = LoadTexture("block_selection.png");
 
       buttons.clear();
       for (auto p : initializer_list<pair<string, Command >> {
           {
-              "btn_corridor.png",  COMMAND_CORRIDOR},
+              "btn_corridor.png",      COMMAND_CORRIDOR},
           {
-              "btn_staircase.png", COMMAND_STAIRCASE},
+              "btn_staircase.png",     COMMAND_STAIRCASE},
           {
-              "btn_workshop.png",  COMMAND_WORKSHOP}
+              "btn_mushroom_farm.png", COMMAND_MUSHROOM_FARM}
       }
           ) {
         Button *b = new Button();
@@ -132,6 +134,10 @@ namespace bb {
             }
         };
         buttons.push_back(b);
+      }
+
+      for (int i = 0; i < LAST_ITEM_TYPE; ++i) {
+        item_textures[i] = LoadTexture(item_defs[i].texture_name);
       }
 
       TTF_Init();
@@ -172,8 +178,8 @@ namespace bb {
           if (event.button.button == SDL_BUTTON_MIDDLE) {
             middle_down = true;
             middle_down_time = SDL_GetTicks();
-            middle_down_x = camera.x + i64(event.button.x / scale);
-            middle_down_y = camera.y + i64(event.button.y / scale);
+            middle_down_x = camera.x + int(event.button.x / scale);
+            middle_down_y = camera.y + int(event.button.y / scale);
           } else if (event.button.button == SDL_BUTTON_LEFT) {
             if (event.button.x < 100) {
               int ind = event.button.y / 100;
@@ -191,8 +197,8 @@ namespace bb {
                 case COMMAND_CORRIDOR:
                   fill_structure = CORRIDOR;
                   break;
-                case COMMAND_WORKSHOP:
-                  fill_structure = WORKSHOP;
+                case COMMAND_MUSHROOM_FARM:
+                  fill_structure = MUSHROOM_FARM;
                   break;
                 default:
                   break;
@@ -207,10 +213,10 @@ namespace bb {
             int time = SDL_GetTicks();
             if (time - middle_down_time < 200) {
               if (scale == 1) {
-                set_scale(last_scale);
+                SetScale(last_scale);
               } else {
                 last_scale = scale;
-                set_scale(1);
+                SetScale(1);
               }
             }
           } else if (event.button.button == SDL_BUTTON_LEFT) {
@@ -219,8 +225,8 @@ namespace bb {
           }
         } else if (event.type == SDL_MOUSEMOTION) {
           if (middle_down) {
-            camera.y = middle_down_y - i64(event.motion.y / scale);
-            camera.x = middle_down_x - i64(event.motion.x / scale);
+            camera.y = middle_down_y - int(event.motion.y / scale);
+            camera.x = middle_down_x - int(event.motion.x / scale);
           }
           if (fill_structure != NONE) {
             Cell c;
@@ -231,7 +237,7 @@ namespace bb {
             }
           }
         } else if (event.type == SDL_MOUSEWHEEL) {
-          set_scale(scale * exp2(event.wheel.y / 4.));
+          SetScale(scale * exp2(event.wheel.y / 4.));
         } else if (event.type == SDL_WINDOWEVENT) {
           switch (event.window.event) {
             case SDL_WINDOWEVENT_RESIZED:
@@ -308,19 +314,30 @@ namespace bb {
 
       SDL_Rect tile_rect;
 
-      i64 left = i64(camera.x + 100 / scale);
-      i64 right = left + i64(windowRect.w / scale);
-      i64 top = camera.y;
-      i64 bottom = top + i64(windowRect.h / scale);
+      int left = int(camera.x + 100 / scale);
+      int right = left + int(windowRect.w / scale);
+      int top = camera.y;
+      int bottom = top + int(windowRect.h / scale);
       Cell top_left = Cell(Point(top, left));
       Cell bottom_right = Cell(Point(bottom, right));
 
-      for (i64 row = top_left.row; row <= bottom_right.row; ++row) {
-        for (i64 col = top_left.col; col <= bottom_right.col; ++col) {
+      for (int row = top_left.row; row <= bottom_right.row; ++row) {
+        for (int col = top_left.col; col <= bottom_right.col; ++col) {
           Cell cell = {row, col};
           SDL_Texture *texture = GetTextureForCell(cell);
           GetTileRect(row, col, &tile_rect);
           SDL_RenderCopy(renderer, texture, nullptr, &tile_rect);
+
+          auto range = items.equal_range(cell);
+          for (auto it = range.first; it != range.second; ++it) {
+            SDL_Rect rect;
+            rect.x = it->second->pos.x;
+            rect.y = it->second->pos.y;
+            rect.w = it->second->def->w;
+            rect.h = it->second->def->h;
+            SDL_RenderCopy(renderer, item_textures[it->second->def->type], nullptr, &rect);
+          }
+
           auto it = plans.find(cell);
           if (it != plans.end()) {
             int orig_h = tile_rect.h;
@@ -351,9 +368,9 @@ namespace bb {
         name_texture->size.y = r.y - name_texture->size.h;
         SDL_RenderCopy(renderer, name_texture->texture, nullptr, &name_texture->size);
         int y = name_texture->size.y;
-        auto& said = said_texts[d];
+        auto &said = said_texts[d];
         int now = SDL_GetTicks();
-        while(!said.empty() && (now - said.front()->time_said > 5000)) {
+        while (!said.empty() && (now - said.front()->time_said > 5000)) {
           delete said.front();
           said.pop_front();
         }

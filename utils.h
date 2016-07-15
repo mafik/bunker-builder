@@ -2,9 +2,6 @@
 #define BUNKERBUILDER_UTILS_H
 
 namespace bb {
-  typedef uint64_t u64;
-  typedef int64_t i64;
-
   template < class T > T div_floor(T x, T y) {
     T q = x / y;
     T r = x % y;

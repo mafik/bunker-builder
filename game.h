@@ -2,6 +2,8 @@
 #define BUNKERBUILDER_GAME_H
 
 #include <cstdio>
+#include <unordered_map>
+#include <unordered_set>
 #include <map>
 #include <set>
 #include <deque>
@@ -15,44 +17,57 @@
  *
  * When a user is pointing at a cell, a detailed box about all therein located items appears.
  *
- * When a dwarf is selected, buttons change to allow modifying his behavior
+ * Dwarf can hold one item in hands (weapon / tool / moved furniture etc.)
+ * Dwarf can equip one light and one heavy piece of clothing for each location: hands, torso, head, legs, feet.
  */
 
 namespace bb {
 
     using namespace std;
 
-    constexpr i64 W = 100;
-    constexpr i64 H = 200;
+    constexpr int W = 100;
+    constexpr int H = 200;
 
     enum StructureType {
         NONE = 0,
         STAIRCASE,
         CORRIDOR,
-        WORKSHOP
+        MUSHROOM_FARM
     };
 
     struct Dwarf;
-        
+
     struct Structure {
         StructureType type;
-        Dwarf* occupant = nullptr;
-        static Structure* New(StructureType);
+        Dwarf *occupant = nullptr;
+
+        static Structure *New(StructureType);
     };
 
-    struct Staircase : Structure {};
+    struct Staircase : Structure {
+    };
 
-    struct Corridor : Structure {};
+    struct Corridor : Structure {
+    };
 
-    struct Workshop : Structure {};
+    struct MushroomFarm : Structure {
+    };
 
-    Structure* Structure::New(StructureType type) {
-      Structure* s;
-      switch(type) {
-        case STAIRCASE: s = new Staircase(); break;
-        case CORRIDOR: s = new Corridor(); break;
-        case WORKSHOP: s = new Workshop(); break;
-        default: fprintf(stderr, "Unknown structure type: %d\n", type); return nullptr;
+    Structure *Structure::New(StructureType type) {
+      Structure *s;
+      switch (type) {
+        case STAIRCASE:
+          s = new Staircase();
+          break;
+        case CORRIDOR:
+          s = new Corridor();
+          break;
+        case MUSHROOM_FARM:
+          s = new MushroomFarm();
+          break;
+        default:
+          fprintf(stderr, "Unknown structure type: %d\n", type);
+          return nullptr;
       }
       s->type = type;
       return s;
@@ -61,91 +76,138 @@ namespace bb {
     struct Point;
 
     struct Cell {
-        i64 row, col;
+        int row, col;
 
-        Cell(i64 _row, i64 _col) : row(_row), col(_col) { }
+        Cell(int _row, int _col) : row(_row), col(_col) { }
 
         Cell() : row(0), col(0) { }
 
         Cell(const Point &);
 
         bool operator!=(const Cell &other) const {
-            return row != other.row || col != other.col;
+          return row != other.row || col != other.col;
         }
-        
-        bool operator==(const Cell& other) const { return !(*this != other); }
+
+        bool operator==(const Cell &other) const { return !(*this != other); }
 
         bool operator<(const Cell &other) const {
-            if (row == other.row) return col < other.col;
-            return row < other.row;
+          if (row == other.row) return col < other.col;
+          return row < other.row;
         }
     };
 
-    struct Point {
-        i64 y, x;
 
-        Point(i64 _y, i64 _x) : y(_y), x(_x) { }
+    struct Point {
+        int y, x;
+
+        Point(int _y, int _x) : y(_y), x(_x) { }
 
         Point() : y(0), x(0) { }
 
         Point(const Cell &cell) : y(cell.row * H), x(cell.col * W) { }
-        
-        i64 MetroDist(const Point& other) {
+
+        int MetroDist(const Point &other) {
           return abs(x - other.x) + abs(y - other.y);
         }
     };
-    
-    Point Waypoint(const Cell& cell) {
+
+    Point Waypoint(const Cell &cell) {
       return Point((cell.row + 1) * H - 1, (cell.col) * W + W / 2);
     }
 
     Cell::Cell(const Point &point) : row(div_floor(point.y, H)), col(div_floor(point.x, W)) { }
-    
+
     struct AABB {
-      i64 left, right, top, bottom; // bottom >= top (y axis grows downwards)
-      AABB(const Dwarf&);
-      AABB(const Cell& c) : left(c.col * W), right((c.col + 1) * W - 1), top(c.row * H), bottom((c.row + 1) * H - 1) {}
-    };
-    
-    struct Plan {
-      StructureType structure_type;
-      double progress;
-      Dwarf* assignee;
-      Plan(StructureType _structure_type) : structure_type(_structure_type), progress(0), assignee(nullptr) {}
+        int left, right, top, bottom; // bottom >= top (y axis grows downwards)
+        AABB(const Dwarf &);
+
+        AABB(const Cell &c) : left(c.col * W), right((c.col + 1) * W - 1), top(c.row * H),
+                              bottom((c.row + 1) * H - 1) { }
     };
 
-    map < Cell, Structure * >cells;
-    map < Cell, Plan * > plans;
+    // TODO: Convert Items & Dwarves to "Objects"
+    // TODO: Convert Structures to similar structure as Items
+
+    enum ItemType {
+        SPORE,
+        LAST_ITEM_TYPE,
+    };
+
+    struct ItemDef {
+        ItemType type;
+        int w, h;
+        string texture_name;
+    };
+
+    struct Item {
+        Point pos;
+        ItemDef *def;
+    };
+
+    ItemDef item_defs[] = {
+        [SPORE]={.type = SPORE, .w=27, .h=26, .texture_name = "mushroom.png"}
+    };
+
+    struct Plan {
+        StructureType structure_type;
+        double progress;
+        Dwarf *assignee;
+
+        Plan(StructureType _structure_type) : structure_type(_structure_type), progress(0), assignee(nullptr) { }
+    };
+
+}
+namespace std {
+    template<>
+    struct hash<bb::Cell> {
+        size_t operator()(const bb::Cell &cell) const {
+          return (hash<int>()(cell.col) >> 1) ^ hash<int>()(cell.row);
+        }
+    };
+}
+
+namespace bb {
+
+    unordered_map<Cell, Structure *> cells;
+    unordered_map<Cell, Plan *> plans;
+    unordered_multimap<Cell, Item *> items;
+
+    void AddItem(Point pos, ItemType item_type) {
+      Item *item = new Item();
+      item->def = &item_defs[item_type];
+      item->pos = pos;
+      items.insert(make_pair(Cell(item->pos), item));
+    }
 
     void AddStructure(int row, int col, Structure *structure) {
-        Cell coord = { row, col };
-        auto it = cells.find(coord);
-        if (it == cells.end()) {
-            cells.insert(make_pair(coord, structure));
-        } else {
-            delete it->second;
-            cells[coord] = structure;
-        }
+      Cell coord = {row, col};
+      auto it = cells.find(coord);
+      if (it == cells.end()) {
+        cells.insert(make_pair(coord, structure));
+      } else {
+        delete it->second;
+        cells[coord] = structure;
+      }
     }
 
     bool IsStructureType(Cell cell, StructureType structure_type) {
-        auto it = cells.find(cell);
-        if (it == cells.end())
-            return false;
-        else
-            return it->second->type == structure_type;
+      auto it = cells.find(cell);
+      if (it == cells.end())
+        return false;
+      else
+        return it->second->type == structure_type;
     }
 
     bool CanTravelVertically(Cell cell) {
-        return (cell.row == 0) || IsStructureType(cell, STAIRCASE);
+      return (cell.row == 0) || IsStructureType(cell, STAIRCASE);
     }
 
     bool CanTravel(Cell cell) {
-        if (cell.row == 0)
-            return true;
-        return cells.find(cell) != cells.end();
+      if (cell.row == 0)
+        return true;
+      return cells.find(cell) != cells.end();
     }
-    
+
     bool HasPlan(Cell cell) {
       return plans.find(cell) != plans.end();
     }
@@ -156,44 +218,46 @@ namespace bb {
         string name;
         Point pos;
         Event<string> said_something;
+        Item *item = nullptr;
 
         static Dwarf *MakeRandom(int row, int col) {
-            Dwarf *d = new Dwarf();
-            d->name = namegen::gen();
-            d->pos = Waypoint(Cell(row, col));
-            dwarf_created.run(d);
+          Dwarf *d = new Dwarf();
+          d->name = namegen::gen();
+          d->pos = Waypoint(Cell(row, col));
+          dwarf_created.run(d);
           d->Say("Hello!");
-            return d;
+          return d;
         }
 
         void Say(string text) {
-            printf("%s: %s\n", name.c_str(), text.c_str());
           said_something.run(&text);
         }
 
         int last_said = -5000;
-        void SaySlow(const string& text) {
+
+        void SaySlow(const string &text) {
           int now = SDL_GetTicks();
           if (now - last_said > 5000) {
             last_said = now;
             Say(text);
           }
         }
-        
-        Plan* plan = nullptr;
-        Structure* structure = nullptr;
-        Cell destination = Cell(0,0);
-        
+
+        Plan *plan = nullptr;
+        Structure *structure = nullptr;
+        Cell destination = Cell(0, 0);
+
         bool TakeWorkAt(Cell cell) {
           auto plan_it = plans.find(cell);
-          if(plan_it != plans.end() && plan_it->second->assignee == nullptr) {
+          if (plan_it != plans.end() && plan_it->second->assignee == nullptr) {
             destination = cell;
             plan = plan_it->second;
             plan->assignee = this;
             return true;
           }
           auto struct_it = cells.find(cell);
-          if (struct_it != cells.end() && struct_it->second->type == WORKSHOP && struct_it->second->occupant == nullptr) {
+          if (struct_it != cells.end() && struct_it->second->type == MUSHROOM_FARM &&
+              struct_it->second->occupant == nullptr) {
             SaySlow("I'll work at this workshop...");
             destination = cell;
             structure = struct_it->second;
@@ -202,7 +266,7 @@ namespace bb {
           }
           return false;
         }
-        
+
         void ReturnWork() {
           if (plan) {
             plan->assignee = nullptr;
@@ -213,30 +277,35 @@ namespace bb {
             structure = nullptr;
           }
         }
-        
-        void GoToWork(const Point& waypoint) {
-          int dy = limit_abs<i64>(waypoint.y - pos.y, 3);
-          int dx = limit_abs<i64>(waypoint.x - pos.x, 5);
-          pos.y += dy; pos.x += dx;
+
+        void GoToWork(const Point &waypoint) {
+          int dy = limit_abs<int>(waypoint.y - pos.y, 3);
+          int dx = limit_abs<int>(waypoint.x - pos.x, 5);
+          pos.y += dy;
+          pos.x += dx;
           if (Cell(waypoint) == destination) {
             if (!CanTravel(destination)) {
               AABB dwarf_bb = AABB(*this);
               AABB dest_bb = AABB(destination);
-              if((dx > 0) && (dwarf_bb.right >= dest_bb.left)) {
-                pos.x -= dwarf_bb.right - dest_bb.left + 1; dx = 0;
+              if ((dx > 0) && (dwarf_bb.right >= dest_bb.left)) {
+                pos.x -= dwarf_bb.right - dest_bb.left + 1;
+                dx = 0;
               }
-              if((dx < 0) && (dwarf_bb.left <= dest_bb.right)) {
-                pos.x += dest_bb.right - dwarf_bb.left + 1; dx = 0;
+              if ((dx < 0) && (dwarf_bb.left <= dest_bb.right)) {
+                pos.x += dest_bb.right - dwarf_bb.left + 1;
+                dx = 0;
               }
-              
-              if((dy > 0) && (dwarf_bb.bottom >= dest_bb.top)) {
-                pos.y -= dwarf_bb.bottom - dest_bb.top + 1; dy = 0;
+
+              if ((dy > 0) && (dwarf_bb.bottom >= dest_bb.top)) {
+                pos.y -= dwarf_bb.bottom - dest_bb.top + 1;
+                dy = 0;
               }
-              if((dy < 0) && (dwarf_bb.top <= dest_bb.bottom)) {
-                pos.y += dest_bb.bottom - dwarf_bb.top + 1; dy = 0;
+              if ((dy < 0) && (dwarf_bb.top <= dest_bb.bottom)) {
+                pos.y += dest_bb.bottom - dwarf_bb.top + 1;
+                dy = 0;
               }
             }
-            if(plan && dx == 0 && dy == 0) {
+            if (plan && dx == 0 && dy == 0) {
               plan->progress += 0.01;
               if (plan->progress >= 1) {
                 cells[destination] = Structure::New(plan->structure_type);
@@ -247,92 +316,95 @@ namespace bb {
             }
           }
         }
-        
+
         static const int width = 82;
         static const int height = 100;
     };
-    
-    AABB::AABB(const Dwarf& dwarf)
-      : left(dwarf.pos.x - Dwarf::width / 2)
-      , right(dwarf.pos.x + Dwarf::width / 2)
-      , top(dwarf.pos.y - Dwarf::height)
-      , bottom(dwarf.pos.y) {}
 
-    set < Dwarf * >dwarves;
-    
+    AABB::AABB(const Dwarf &dwarf)
+        : left(dwarf.pos.x - Dwarf::width / 2), right(dwarf.pos.x + Dwarf::width / 2), top(dwarf.pos.y - Dwarf::height),
+          bottom(dwarf.pos.y) { }
+
+    set<Dwarf *> dwarves;
+
     // TODO: preferential weighing of distances
-    
+    // TODO: item pickup
+
     void Tick() {
-      map<Dwarf*, map<Cell, Cell>> shortest_path_tree;
-      multimap<double, tuple<Dwarf*, Cell, Cell>> Q; 
-      for (Dwarf * d : dwarves) {
+      map<pair<Dwarf *, Item *>, map<Cell, Cell>> shortest_path_tree;
+      multimap<double, pair<pair<Dwarf *, Item*>, pair<Cell, Cell>>> Q;
+      for (Dwarf *d : dwarves) {
         auto pos = d->pos;
         if (d->TakeWorkAt(pos)) { // skip search if already "standing" on a job
           d->GoToWork(Waypoint(pos));
         } else {
-          Q.insert(make_pair(0, make_tuple(d, pos, pos)));
+          Q.insert(make_pair(0, make_pair(make_pair(d, d->item), make_pair(pos, pos))));
         }
       }
       int search_counter = 0;
-      while(!Q.empty()) {
+      while (!Q.empty()) {
         auto p = Q.begin();
         double dist = p->first;
-        Dwarf* dwarf = get<0>(p->second);
-        Cell current = get<1>(p->second);
-        Cell source = get<2>(p->second);
+        auto dwarf_item = p->second.first;
+        auto current_source = p->second.second;
+        Dwarf *dwarf = dwarf_item.first;
+        Item *item = dwarf_item.second;
+        Cell current = current_source.first;
+        Cell source = current_source.second;
         Q.erase(p);
         if (dwarf->plan || dwarf->structure) continue;
-        auto& visited = shortest_path_tree[dwarf];
+        auto &visited = shortest_path_tree[dwarf_item];
         if (visited.find(current) != visited.end()) continue;
         visited[current] = source;
         auto Peek = [&](Cell next) -> bool {
-          if (next.row == current.row - 1) {
-            if (!CanTravelVertically(current)) return false;
-            dist += 2;
-          }
-          bool is_below = next.row == current.row + 1;
-          auto plan_it = plans.find(next);
-          bool is_staircase_planned = plan_it != plans.end() &&
-                                      plan_it->second->structure_type == STAIRCASE;
-          if ((!is_below || is_staircase_planned) && dwarf->TakeWorkAt(next)) {
-            // add the next cell to the bfs tree regardless of reachability
-            visited[next] = current;
-            source = current; current = next; 
-            // backtrack through bfs tree
-            Cell start = Cell(dwarf->pos);
-            while (source != start) {
+            if (next.row == current.row - 1) {
+              if (!CanTravelVertically(current)) return false;
+              dist += 2;
+            }
+            bool is_below = next.row == current.row + 1;
+            auto plan_it = plans.find(next);
+            bool is_staircase_planned = plan_it != plans.end() &&
+                                        plan_it->second->structure_type == STAIRCASE;
+            if ((!is_below || is_staircase_planned) && dwarf->TakeWorkAt(next)) {
+              // add the next cell to the bfs tree regardless of reachability
+              visited[next] = current;
+              source = current;
+              current = next;
+              // backtrack through bfs tree
+              Cell start = Cell(dwarf->pos);
+              while (source != start) {
                 auto p = visited.find(source);
                 current = p->first;
                 source = p->second;
+              }
+              Point first = Waypoint(source); // cell where the dwarf is standing currently
+              Point second = Waypoint(current); // next cell in the path
+              // prevent moving backwards by looking one waypoint ahead
+              int block_dist = first.MetroDist(second);
+              int my_dist = dwarf->pos.MetroDist(second);
+              if (my_dist <= block_dist) dwarf->GoToWork(second);
+              else dwarf->GoToWork(first);
+              return true;
             }
-            Point first = Waypoint(source); // cell where the dwarf is standing currently
-            Point second = Waypoint(current); // next cell in the path
-            // prevent moving backwards by looking one waypoint ahead
-            i64 block_dist = first.MetroDist(second);
-            i64 my_dist = dwarf->pos.MetroDist(second);
-            if (my_dist <= block_dist) dwarf->GoToWork(second);
-            else dwarf->GoToWork(first);
-            return true;
-          }
-          if (next.row == current.row) {
-            if (!CanTravel(next)) return false;
-            dist += 1;
-          }
-          if (next.row == current.row + 1) {
-            if (!CanTravelVertically(next)) return false;
-            dist += 2;
-          }
-          Q.insert(make_pair(dist, make_tuple(dwarf, next, current)));
-          return false;
+            if (next.row == current.row) {
+              if (!CanTravel(next)) return false;
+              dist += 1;
+            }
+            if (next.row == current.row + 1) {
+              if (!CanTravelVertically(next)) return false;
+              dist += 2;
+            }
+            Q.insert(make_pair(dist, make_pair(make_pair(dwarf, item), make_pair(next, current))));
+            return false;
         };
         if (++search_counter > 1000) break;
-        if (Peek({ current.row, current.col + 1 })) continue;
-        if ((current.col > 0) && Peek({ current.row, current.col - 1 })) continue;
-        if (Peek({ current.row + 1, current.col })) continue;
-        if ((current.row > 0) && Peek({ current.row - 1, current.col })) continue;
+        if (Peek({current.row, current.col + 1})) continue;
+        if ((current.col > 0) && Peek({current.row, current.col - 1})) continue;
+        if (Peek({current.row + 1, current.col})) continue;
+        if ((current.row > 0) && Peek({current.row - 1, current.col})) continue;
       }
-      
-      for (Dwarf * d : dwarves) d->ReturnWork();
+
+      for (Dwarf *d : dwarves) d->ReturnWork();
     }
 }
 

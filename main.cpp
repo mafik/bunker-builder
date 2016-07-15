@@ -16,7 +16,8 @@ int main() {
   AddStructure(3, 5, Structure::New(STAIRCASE));
   AddStructure(3, 4, Structure::New(CORRIDOR));
   AddStructure(3, 3, Structure::New(CORRIDOR));
-  AddStructure(3, 2, Structure::New(WORKSHOP));
+  AddStructure(3, 2, Structure::New(MUSHROOM_FARM));
+  AddItem(Point(100, 500), SPORE);
 
   while (HandleInput()) {
     Tick();
