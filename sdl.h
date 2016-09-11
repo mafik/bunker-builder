@@ -9,6 +9,7 @@
 #include <SDL_ttf.h>
 #include <algorithm>
 #include "game.h"
+#include "utils.h"
 
 namespace bb {
     using namespace std;
@@ -27,8 +28,8 @@ namespace bb {
     SDL_Renderer *renderer;
 
     SDL_Texture *selection_texture;
-    unordered_map<StructureType, SDL_Texture *> textures;
-    SDL_Texture *item_textures[LAST_ITEM_TYPE];
+    unordered_map<StructureType, SDL_Texture *, EnumClassHash> textures;
+    SDL_Texture *item_textures[NO_ITEM_TYPE];
     SDL_Texture *sky;
     SDL_Texture *dwarf;
     SDL_Rect windowRect = {900, 300, 800, 1000};
@@ -136,7 +137,7 @@ namespace bb {
         buttons.push_back(b);
       }
 
-      for (int i = 0; i < LAST_ITEM_TYPE; ++i) {
+      for (int i = 0; i < NO_ITEM_TYPE; ++i) {
         item_textures[i] = LoadTexture(item_defs[i].texture_name);
       }
 
@@ -169,6 +170,8 @@ namespace bb {
           return false;
         else if (event.type == SDL_KEYDOWN) {
           switch (event.key.keysym.sym) {
+            case SDLK_ESCAPE:
+              return false;
             default:
               windowRect.w += 100;
               //InitRenderer();
@@ -331,8 +334,13 @@ namespace bb {
           auto range = items.equal_range(cell);
           for (auto it = range.first; it != range.second; ++it) {
             SDL_Rect rect;
-            rect.x = it->second->pos.x;
-            rect.y = it->second->pos.y;
+            if (it->second->carrier == nullptr) {
+              rect.x = it->second->pos.x;
+              rect.y = it->second->pos.y;
+            } else {
+              rect.x = it->second->carrier->pos.x;
+              rect.y = it->second->carrier->pos.y;
+            }
             rect.w = it->second->def->w;
             rect.h = it->second->def->h;
             SDL_RenderCopy(renderer, item_textures[it->second->def->type], nullptr, &rect);
