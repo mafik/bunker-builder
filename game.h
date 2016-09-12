@@ -2,6 +2,7 @@
 #define BUNKERBUILDER_GAME_H
 
 #include <cstdio>
+#include <cmath>
 #include <unordered_map>
 #include <unordered_set>
 #include <map>
@@ -18,7 +19,7 @@
  * When a user is pointing at a cell, a detailed box about all therein located items appears.
  *
  * Dwarf can hold one item in hands (weapon / tool / moved furniture etc.)
- * Dwarf can equip one light and one heavy piece of clothing for each location: hands, torso, head, legs, feet.
+ * Dwarf can equip a costume that will alter his stats.
  */
 
 namespace bb {
@@ -96,7 +97,6 @@ struct Cell {
   }
 };
 
-
 struct Point {
   int y, x;
 
@@ -140,7 +140,6 @@ struct ItemDef {
 };
 
 struct Item {
-  Dwarf* carrier;
   Point pos;
   ItemDef *def;
   Dwarf *assignee;
@@ -235,16 +234,6 @@ struct Dwarf {
     said_something.run(&text);
   }
 
-  int last_said = -5000;
-
-  void SaySlow(const string &text) {
-    int now = SDL_GetTicks();
-    if (now - last_said > 5000) {
-      last_said = now;
-      Say(text);
-    }
-  }
-
   Plan *plan = nullptr;
   Structure *structure = nullptr;
   Item *assigned_item = nullptr;
@@ -266,10 +255,14 @@ struct Dwarf {
   }
 
   void GoToWork(const Point &waypoint) {
-    int dy = limit_abs<int>(waypoint.y - pos.y, 3);
-    int dx = limit_abs<int>(waypoint.x - pos.x, 5);
+    int dy = limit_abs<int>(waypoint.y - pos.y, 300);
+    int dx = limit_abs<int>(waypoint.x - pos.x, 300);
     pos.y += dy;
     pos.x += dx;
+    if (item) {
+      item->pos.x = pos.x;
+      item->pos.y = pos.y;
+    }
     if (Cell(waypoint) == destination) {
       if (!CanTravel(destination)) {
         AABB dwarf_bb = AABB(*this);
@@ -315,9 +308,45 @@ AABB::AABB(const Dwarf &dwarf)
 set<Dwarf *> dwarves;
 
 // TODO: preferential weighing of distances
-// TODO: item pickup
 
-bool TakeWorkAt(Dwarf *dwarf, Item *item, Cell cell) {
+struct CellItem {
+  Cell cell;
+  Item* item;
+  
+  CellItem() = default;
+  CellItem(const CellItem&) = default;
+  CellItem(Cell cell_, Item* item_) : cell(cell_), item(item_) {}
+  
+  bool operator<(const CellItem& other) const {
+    if (cell == other.cell) {
+      return cell < other.cell;
+    }
+    return item < other.item;
+  }
+  
+  bool operator!=(const CellItem& other) const {
+    return (cell != other.cell) || (item != other.item);
+  }
+};
+
+// TODO
+struct SearchStep {
+  double dist;
+};
+
+struct SearchVisit : SearchStep {
+  Dwarf* dwarf;
+  pair<CellItem, CellItem> cells;
+};
+
+struct SearchAssign : SearchStep {
+  Dwarf* dwarf;
+  
+};
+  
+bool TakeWorkAt(Dwarf *dwarf, CellItem cell_item) {
+  const Cell& cell = cell_item.cell;
+  Item* item = cell_item.item;
   auto plan_it = plans.find(cell);
   if (plan_it != plans.end() && plan_it->second->assignee == nullptr) {
     dwarf->destination = cell;
@@ -329,7 +358,6 @@ bool TakeWorkAt(Dwarf *dwarf, Item *item, Cell cell) {
   if (struct_it != cells.end() && struct_it->second->type == MUSHROOM_FARM &&
       struct_it->second->assignee == nullptr && item != nullptr && item->def->type == SPORE &&
       item->assignee == nullptr) {
-    dwarf->SaySlow("I'll work at this workshop...");
     dwarf->destination = cell;
     dwarf->structure = struct_it->second;
     dwarf->structure->assignee = dwarf;
@@ -341,104 +369,145 @@ bool TakeWorkAt(Dwarf *dwarf, Item *item, Cell cell) {
 }
 
 void Tick() {
-  typedef pair<Dwarf *, Item *> DwarfItem;
-  map<DwarfItem, map<Cell, Cell>> shortest_path_tree;
-  multimap<double, pair<DwarfItem, pair<Cell, Cell>>> Q;
+  map<Dwarf*, map<CellItem, CellItem>> shortest_path_tree;
+  multimap<double, pair<Dwarf*, pair<CellItem, CellItem>>> Q;
+  auto Q_add = [&Q](double dist, Dwarf* dwarf, CellItem next, CellItem prev) {
+    Q.insert( make_pair(dist, make_pair(dwarf, make_pair(next, prev))) );
+  };
   for (Dwarf *d : dwarves) {
     auto pos = d->pos;
-    if (TakeWorkAt(d, d->item, pos)) { // skip search if already "standing" on a job
+    CellItem cell_item = CellItem(pos, d->item);
+    if (TakeWorkAt(d, cell_item)) { // skip search if already "standing" on a job
       d->GoToWork(Waypoint(pos));
     } else {
-      Q.insert(make_pair(0, make_pair(make_pair(d, d->item), make_pair(pos, pos))));
+      Q_add(0, d, cell_item, cell_item);
     }
   }
   int search_counter = 0;
   while (!Q.empty()) {
     auto p = Q.begin();
-    double dist = p->first;
-    auto dwarf_item = p->second.first;
+    const double dist = p->first;
+    Dwarf *dwarf = p->second.first;
     auto current_source = p->second.second;
-    Dwarf *dwarf = dwarf_item.first;
-    Item *item = dwarf_item.second;
-    Cell current = current_source.first;
-    Cell source = current_source.second;
+    CellItem current = current_source.first;
+    CellItem source = current_source.second;
     Q.erase(p);
     if (dwarf->plan || dwarf->structure) continue;
-    auto &visited = shortest_path_tree[dwarf_item];
+    auto &visited = shortest_path_tree[dwarf];
     if (visited.find(current) != visited.end()) continue;
     visited[current] = source;
-    auto Peek = [&](Cell next) -> bool {
-      if (next.row == current.row - 1) {
-        if (!CanTravelVertically(current)) return false;
-        dist += 2;
+    auto Peek = [&](CellItem next) -> bool {
+      double next_dist = dist;
+      if (next.cell.row == current.cell.row - 1) {
+        if (!CanTravelVertically(current.cell)) return false;
+        next_dist += 2;
       }
-      bool is_below = next.row == current.row + 1;
-      auto plan_it = plans.find(next);
+      bool is_below = next.cell.row == current.cell.row + 1;
+      auto plan_it = plans.find(next.cell);
       bool is_staircase_planned = plan_it != plans.end() &&
                                   plan_it->second->structure_type == STAIRCASE;
-      if ((!is_below || is_staircase_planned) && TakeWorkAt(dwarf, item, next)) {
+      if ((!is_below || is_staircase_planned) && TakeWorkAt(dwarf, next)) {
         // add the next cell to the bfs tree regardless of reachability
         visited[next] = current;
         source = current;
         current = next;
         // backtrack through bfs tree
-        Cell start = Cell(dwarf->pos);
+        CellItem start = CellItem(Cell(dwarf->pos), dwarf->item);
+        printf("%s (%d-%d) takes work at %d-%d\n", dwarf->name.c_str(), start.cell.row, start.cell.col, next.cell.row, next.cell.col);
+        if (dwarf->item) {
+          printf("%s carries %s\n", dwarf->name.c_str(), dwarf->item->def->texture_name.c_str());
+        } else {
+          printf("%s has no item\n", dwarf->name.c_str());
+        }
+        if (dwarf->assigned_item) {
+          Cell assigned_cell = Cell(dwarf->assigned_item->pos);
+          printf("%s is assigned to item %s (%d-%d)\n", dwarf->name.c_str(), dwarf->assigned_item->def->texture_name.c_str(),
+                 assigned_cell.row, assigned_cell.col);
+        } else {
+          printf("%s has no assigned item\n", dwarf->name.c_str());
+        }
         while (source != start) {
           auto p = visited.find(source);
           current = p->first;
           source = p->second;
-          // TODO: fix this loop
-          if (item != nullptr &&
-              item->assignee == dwarf &&
-              item->carrier == nullptr &&
-              current == Cell(item->pos)) {
-            visited = shortest_path_tree[make_pair(dwarf, dwarf->item)];
-          }
         }
-        Point first = Waypoint(source); // cell where the dwarf is standing currently
-        if (item != nullptr &&
-            item->assignee == dwarf &&
-            item->carrier == nullptr &&
-            Cell(item->pos) == source) {
-          item->carrier = dwarf;
-          dwarf->item = item;
-        }
-        Point second = Waypoint(current); // next cell in the path
+        Point first = Waypoint(source.cell); // cell where the dwarf is standing currently
+        Point second = Waypoint(current.cell); // next cell in the path
         // prevent moving backwards by looking one waypoint ahead
         int block_dist = first.MetroDist(second);
         int my_dist = dwarf->pos.MetroDist(second);
-        if (my_dist <= block_dist) dwarf->GoToWork(second);
+        if (my_dist <= block_dist) {
+          if (source.item != current.item) {
+            dwarf->item = current.item;
+          }
+          dwarf->GoToWork(second);
+        }
         else dwarf->GoToWork(first);
         return true;
       }
-      if (next.row == current.row) {
-        if (!CanTravel(next)) return false;
-        dist += 1;
+      if (next.cell.row == current.cell.row) {
+        if (!CanTravel(next.cell)) return false;
+        next_dist += 1;
       }
-      if (next.row == current.row + 1) {
-        if (!CanTravelVertically(next)) return false;
-        dist += 2;
+      if (next.cell.row == current.cell.row + 1) {
+        if (!CanTravelVertically(next.cell)) return false;
+        next_dist += 2;
       }
-      auto step = make_pair(next, current);
-
-      if (item == nullptr) {
-        auto range = items.equal_range(current);
-        for (auto it = range.first; it != range.second; ++it) {
-          Q.insert(make_pair(dist, make_pair(make_pair(dwarf, it->second), step)));
-        }
-      }
-      Q.insert(make_pair(dist, make_pair(make_pair(dwarf, item), step)));
+      Q_add(next_dist, dwarf, next, current);
       return false;
     };
     if (++search_counter > 1000) break;
-    if (Peek({current.row, current.col + 1})) continue;
-    if ((current.col > 0) && Peek({current.row, current.col - 1})) continue;
-    if (Peek({current.row + 1, current.col})) continue;
-    if ((current.row > 0) && Peek({current.row - 1, current.col})) continue;
+    auto range = items.equal_range(current.cell);
+    bool found = false;
+    for (auto it = range.first; it != range.second; ++it) {
+      if (Peek(CellItem(current.cell, it->second))) {
+        found = true;
+        break;
+      }
+    }
+    if (found) continue;
+    if (Peek(CellItem(Cell(current.cell.row, current.cell.col + 1), current.item))) continue;
+    if ((current.cell.col > 0) && Peek(CellItem(Cell(current.cell.row, current.cell.col - 1), current.item))) continue;
+    if (Peek(CellItem(Cell(current.cell.row + 1, current.cell.col), current.item))) continue;
+    if ((current.cell.row > 0) && Peek(CellItem(Cell(current.cell.row - 1, current.cell.col), current.item))) continue;
   }
 
   for (Dwarf *d : dwarves) d->ReturnWork();
 }
 }
+
+/*
+Types of work:
+- a room needs an item
+- spend some time to produce an item in a room
+- 
+
+
+Digging produces different kinds of materials: stone, iron ore, copper ore, gold ore, coal, bones
+
+On the ground there are herbs growing which can be cut to get" herbs
+A herb can also be a source of saplings without cutting it down.
+
+Underground there are mushrooms which work in exactly the same way.
+
+Depots lets the player:
+ - buy / sell bio-chemicals
+ - buy / sell meals
+ - buy / sell metal bars
+
+Biolab can convert
+ - mushrooms & herbs into bio-chemicals.
+ - bio-chemicals into medicine.
+ 
+Kitchen can convert
+ - muchrooms & herbs into meals.
+ 
+Smelter can convert
+ - coal + ores -> bars
+
+Metalworks can convert
+ - steel bars
+
+*/
 
 #endif //BUNKERBUILDER_GAME_BASE_H
