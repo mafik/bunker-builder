@@ -1,4 +1,4 @@
-//#define SDL
+#define SDL
 
 #include <cstdio>
 

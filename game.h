@@ -29,6 +29,8 @@ using namespace std;
 constexpr int W = 100;
 constexpr int H = 200;
 
+int money = 1000000;
+
 enum StructureType {
   NONE = 0,
   STAIRCASE,
@@ -94,6 +96,12 @@ struct Cell {
   bool operator<(const Cell &other) const {
     if (row == other.row) return col < other.col;
     return row < other.row;
+  }
+
+  string ToString() {
+    char buff[100];
+    snprintf(buff, 100, "%d-%d", row, col);
+    return string(buff);
   }
 };
 
@@ -255,8 +263,8 @@ struct Dwarf {
   }
 
   void GoToWork(const Point &waypoint) {
-    int dy = limit_abs<int>(waypoint.y - pos.y, 300);
-    int dx = limit_abs<int>(waypoint.x - pos.x, 300);
+    int dy = limit_abs<int>(waypoint.y - pos.y, 3);
+    int dx = limit_abs<int>(waypoint.x - pos.x, 5);
     pos.y += dy;
     pos.x += dx;
     if (item) {
@@ -319,17 +327,24 @@ struct CellItem {
   
   bool operator<(const CellItem& other) const {
     if (cell == other.cell) {
-      return cell < other.cell;
+      return item < other.item;
     }
-    return item < other.item;
+    return cell < other.cell;
   }
   
   bool operator!=(const CellItem& other) const {
     return (cell != other.cell) || (item != other.item);
   }
+
+  string ToString() {
+    char arr[100];
+    snprintf(arr, 100, "%s(%s)", cell.ToString().c_str(), item ? item->def->texture_name.c_str() : "null");
+    return string(arr);
+  }
 };
 
-// TODO
+
+    // TODO
 struct SearchStep {
   double dist;
 };
@@ -391,12 +406,16 @@ void Tick() {
     auto current_source = p->second.second;
     CellItem current = current_source.first;
     CellItem source = current_source.second;
+    //printf("Search step %d: '%s' is visiting %s from %s\n", search_counter, dwarf->name.c_str(), current.ToString().c_str(), source.ToString().c_str());
     Q.erase(p);
     if (dwarf->plan || dwarf->structure) continue;
+    //printf("checkpoint A\n");
     auto &visited = shortest_path_tree[dwarf];
     if (visited.find(current) != visited.end()) continue;
+    //printf("checkpoint B\n");
     visited[current] = source;
     auto Peek = [&](CellItem next) -> bool {
+      //printf(" - considering next step to %s\n", next.ToString().c_str());
       double next_dist = dist;
       if (next.cell.row == current.cell.row - 1) {
         if (!CanTravelVertically(current.cell)) return false;
@@ -413,19 +432,15 @@ void Tick() {
         current = next;
         // backtrack through bfs tree
         CellItem start = CellItem(Cell(dwarf->pos), dwarf->item);
+        /*
         printf("%s (%d-%d) takes work at %d-%d\n", dwarf->name.c_str(), start.cell.row, start.cell.col, next.cell.row, next.cell.col);
         if (dwarf->item) {
           printf("%s carries %s\n", dwarf->name.c_str(), dwarf->item->def->texture_name.c_str());
         } else {
           printf("%s has no item\n", dwarf->name.c_str());
         }
-        if (dwarf->assigned_item) {
-          Cell assigned_cell = Cell(dwarf->assigned_item->pos);
-          printf("%s is assigned to item %s (%d-%d)\n", dwarf->name.c_str(), dwarf->assigned_item->def->texture_name.c_str(),
-                 assigned_cell.row, assigned_cell.col);
-        } else {
-          printf("%s has no assigned item\n", dwarf->name.c_str());
-        }
+        printf("%s is assigned to %s\n", dwarf->name.c_str(), next.ToString().c_str());
+         */
         while (source != start) {
           auto p = visited.find(source);
           current = p->first;
@@ -453,6 +468,7 @@ void Tick() {
         if (!CanTravelVertically(next.cell)) return false;
         next_dist += 2;
       }
+      //printf(" - scheduling next step to %s\n", next.ToString().c_str());
       Q_add(next_dist, dwarf, next, current);
       return false;
     };

@@ -1,6 +1,9 @@
 #ifndef BUNKERBUILDER_UTILS_H
 #define BUNKERBUILDER_UTILS_H
 
+#include <cstdarg>
+#include <sstream>
+
 namespace bb {
 template<class T>
 T div_floor(T x, T y) {
@@ -62,6 +65,29 @@ struct EnumClassHash {
     return static_cast<std::size_t>(t);
   }
 };
+
+class comma_numpunct : public std::numpunct<char>
+{
+  protected:
+    virtual char do_thousands_sep() const
+    {
+        return ',';
+    }
+
+    virtual std::string do_grouping() const
+    {
+        return "\03";
+    }
+};
+
+template<class T>
+std::string FormatWithCommas(T value)
+{
+  std::stringstream ss;
+  ss.imbue(std::locale(std::locale(), new comma_numpunct()));
+  ss << std::fixed << value;
+  return ss.str();
+}
 }
 
 #endif //BUNKERBUILDER_UTILS_H
